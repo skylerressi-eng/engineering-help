@@ -5,10 +5,12 @@ import converter from './converter';
 import notes from './notes';
 import logiclab from './logiclab';
 import physicsbench from './physicsbench';
+import aerosim from './aerosim';
 
 export const APPS: Record<string, AppModule> = {
   [logiclab.manifest.id]: logiclab,
   [physicsbench.manifest.id]: physicsbench,
+  [aerosim.manifest.id]: aerosim,
   [calculator.manifest.id]: calculator,
   [converter.manifest.id]: converter,
   [notes.manifest.id]: notes,
