@@ -22,6 +22,7 @@ const module: AppModule = {
     icon: Sparkles,
     defaultSize: { width: 560, height: 360 },
     accent: 'linear-gradient(135deg, #6366f1 0%, #ec4899 100%)',
+    hideFromDock: true,
   },
   Component: HelloApp,
 };

@@ -103,8 +103,7 @@ export default function Desktop({ children }: { children: React.ReactNode }) {
             label="New Note"
             onClick={() => {
               setMenu(null);
-              // Notes app not built yet — fallback: open hello so the menu still feels alive.
-              openApp('hello', { title: 'Hello' });
+              openApp('notes', { title: 'Notes' });
             }}
           />
           <div className="my-1 h-px bg-white/10" />
