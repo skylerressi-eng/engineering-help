@@ -19,6 +19,14 @@ function AeroSim({ appId }: { appId: string }) {
   const viz = useAerosimStore((s) => s.viz);
   const threeD = useAerosimStore((s) => s.threeD);
   const sweep = useAerosimStore((s) => s.sweep);
+  const useCustom = useAerosimStore((s) => s.useCustom);
+  const customM = useAerosimStore((s) => s.customM);
+  const customP = useAerosimStore((s) => s.customP);
+  const customT = useAerosimStore((s) => s.customT);
+  const setUseCustom = useAerosimStore((s) => s.setUseCustom);
+  const setCustomM = useAerosimStore((s) => s.setCustomM);
+  const setCustomP = useAerosimStore((s) => s.setCustomP);
+  const setCustomT = useAerosimStore((s) => s.setCustomT);
 
   const setAirfoil = useAerosimStore((s) => s.setAirfoil);
   const setAoaDeg = useAerosimStore((s) => s.setAoaDeg);
@@ -224,8 +232,11 @@ function AeroSim({ appId }: { appId: string }) {
           <div>
             <Label>Airfoil</Label>
             <select
-              value={airfoil}
-              onChange={(e) => setAirfoil(e.target.value as AirfoilId)}
+              value={useCustom ? '__custom__' : airfoil}
+              onChange={(e) => {
+                if (e.target.value === '__custom__') setUseCustom(true);
+                else setAirfoil(e.target.value as AirfoilId);
+              }}
               className="w-full bg-white/5 border border-white/10 rounded-md px-2 py-1 text-xs outline-none"
             >
               {AIRFOILS.map((a) => (
@@ -233,8 +244,44 @@ function AeroSim({ appId }: { appId: string }) {
                   {a.label}
                 </option>
               ))}
+              <option value="__custom__" className="bg-zinc-800">Custom NACA…</option>
             </select>
           </div>
+          {useCustom && (
+            <div className="rounded-lg border border-white/10 bg-black/20 p-2 space-y-1.5">
+              <div className="text-[10px] uppercase tracking-wide text-white/45">Custom NACA</div>
+              <SliderRow
+                label="M (camber)"
+                suffix=""
+                min={0}
+                max={0.09}
+                step={0.005}
+                value={customM}
+                onChange={setCustomM}
+              />
+              <SliderRow
+                label="P (cmb pos)"
+                suffix=""
+                min={0.1}
+                max={0.9}
+                step={0.05}
+                value={customP}
+                onChange={setCustomP}
+              />
+              <SliderRow
+                label="T (thickness)"
+                suffix=""
+                min={0.04}
+                max={0.3}
+                step={0.005}
+                value={customT}
+                onChange={setCustomT}
+              />
+              <div className="text-[10px] text-white/45 font-mono">
+                ≈ NACA {Math.round(customM * 100)}{Math.round(customP * 10)}{String(Math.round(customT * 100)).padStart(2, '0')}
+              </div>
+            </div>
+          )}
 
           <SliderRow label="Airspeed" suffix="m/s" min={0.5} max={120} step={0.5} value={V} onChange={setV} />
           <SliderRow label="AoA" suffix="°" min={-15} max={20} step={0.5} value={aoaDeg} onChange={setAoaDeg} />

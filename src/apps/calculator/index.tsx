@@ -376,7 +376,16 @@ function Programmer({
   }, [expr]);
   const setVal = (n: bigint) => setExpr(n.toString(10));
 
-  const op = (fn: (a: bigint, b: bigint) => bigint, b: bigint) => setVal(fn(value, b));
+  const [operandBStr, setOperandBStr] = useState('1');
+  const operandB = useMemo(() => parseInBase(operandBStr.trim() || '0', 10) ?? 0n, [operandBStr]);
+
+  const op = (fn: (a: bigint, b: bigint) => bigint, b: bigint) => {
+    try {
+      setVal(fn(value, b));
+    } catch {
+      /* shifts by absurd amounts can throw — ignore */
+    }
+  };
   const button = (label: string, onClick: () => void, accent?: 'op' | 'fn') => (
     <button
       key={label}
@@ -412,32 +421,31 @@ function Programmer({
           const n = parseInBase(s, 2);
           if (n !== null) setVal(n);
         }} />
-        <div className="text-[11px] text-white/45 mt-1 font-mono">
+        <div className="flex items-center gap-2 mt-2 text-[11px] text-white/55">
+          <span className="font-mono">B =</span>
+          <input
+            value={operandBStr}
+            onChange={(e) => setOperandBStr(e.target.value)}
+            spellCheck={false}
+            className="flex-1 bg-white/5 border border-white/10 rounded-md px-2 py-0.5 font-mono text-sm text-white outline-none"
+            placeholder="operand B (decimal)"
+          />
+        </div>
+        <div className="text-[10px] text-white/40 mt-1 font-mono">
           two's complement (64-bit) view applies for negative values
         </div>
       </div>
 
       <div className="grid grid-cols-6 gap-1 p-2 flex-1 content-start">
-        {button('AND', () => {
-          const b = prompt('AND with (decimal):');
-          if (b) op((a, x) => a & x, BigInt(b));
+        {button('A·AND·B', () => op((a, x) => a & x, operandB), 'fn')}
+        {button('A·OR·B', () => op((a, x) => a | x, operandB), 'fn')}
+        {button('A·XOR·B', () => op((a, x) => a ^ x, operandB), 'fn')}
+        {button('NOT A', () => setVal(~value), 'fn')}
+        {button('A<<B', () => {
+          try { setVal(value << operandB); } catch { /* ignore */ }
         }, 'fn')}
-        {button('OR', () => {
-          const b = prompt('OR with (decimal):');
-          if (b) op((a, x) => a | x, BigInt(b));
-        }, 'fn')}
-        {button('XOR', () => {
-          const b = prompt('XOR with (decimal):');
-          if (b) op((a, x) => a ^ x, BigInt(b));
-        }, 'fn')}
-        {button('NOT', () => setVal(~value), 'fn')}
-        {button('<<', () => {
-          const b = prompt('Shift left by:');
-          if (b) setVal(value << BigInt(b));
-        }, 'fn')}
-        {button('>>', () => {
-          const b = prompt('Shift right by:');
-          if (b) setVal(value >> BigInt(b));
+        {button('A>>B', () => {
+          try { setVal(value >> operandB); } catch { /* ignore */ }
         }, 'fn')}
 
         {['A', 'B', 'C', 'D', 'E', 'F'].map((c) => button(c, () => setExpr(expr + c)))}

@@ -473,9 +473,9 @@ function ChatInput({ pending }: { pending: boolean }) {
           <ScanLine size={15} />
         </button>
         <button
-          title="Attach"
-          className="text-white/50 hover:text-white p-1 rounded-md hover:bg-white/10"
-          onClick={() => alert('Attachments arrive in a later phase.')}
+          title="Attach (coming soon)"
+          disabled
+          className="text-white/30 p-1 rounded-md cursor-not-allowed"
         >
           <Paperclip size={15} />
         </button>

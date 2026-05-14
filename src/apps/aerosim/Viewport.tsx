@@ -3,7 +3,7 @@ import { OrbitControls, Grid, GizmoHelper, GizmoViewport } from '@react-three/dr
 import { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { useAerosimStore } from '@/store/aerosimStore';
-import { generateAirfoil, placeShape, type AirfoilId } from '@/lib/cfd/naca';
+import { generateAirfoil, naca4Custom, placeShape, type AirfoilId } from '@/lib/cfd/naca';
 import { advectRK2, makeFlowField } from '@/lib/cfd/potential';
 import {
   makeGrid,
@@ -100,8 +100,14 @@ function AirfoilMesh({
   aoa: number;
   threeD: boolean;
 }) {
+  const useCustom = useAerosimStore((s) => s.useCustom);
+  const customM = useAerosimStore((s) => s.customM);
+  const customP = useAerosimStore((s) => s.customP);
+  const customT = useAerosimStore((s) => s.customT);
   const geom = useMemo(() => {
-    const verts = generateAirfoil(airfoil, 60);
+    const verts = useCustom
+      ? naca4Custom(customM, customP, customT, 60)
+      : generateAirfoil(airfoil, 60);
     // Center on quarter-chord, scale by chord, rotate by -aoa
     const placed = placeShape(verts, { x: 0, y: 0 }, chord, aoa);
     const shape = new THREE.Shape();
@@ -114,7 +120,7 @@ function AirfoilMesh({
       return ex;
     }
     return new THREE.ShapeGeometry(shape);
-  }, [airfoil, chord, aoa, threeD]);
+  }, [airfoil, chord, aoa, threeD, useCustom, customM, customP, customT]);
 
   return (
     <mesh geometry={geom} castShadow receiveShadow>
@@ -275,10 +281,16 @@ function FluidField({
     tex.current = t;
   }
 
+  const useCustomShape = useAerosimStore((s) => s.useCustom);
+  const cM = useAerosimStore((s) => s.customM);
+  const cP = useAerosimStore((s) => s.customP);
+  const cT = useAerosimStore((s) => s.customT);
   // Re-stamp obstacle whenever shape changes
   useEffect(() => {
     const g = gridRef.current;
-    const verts = generateAirfoil(airfoil, 60);
+    const verts = useCustomShape
+      ? naca4Custom(cM, cP, cT, 60)
+      : generateAirfoil(airfoil, 60);
     const placed = placeShape(verts, { x: 0, y: 0 }, chord, aoa);
     // Map world (FLOW_DOMAIN) → grid cells
     const toGrid = (p: { x: number; y: number }) => ({
@@ -287,7 +299,7 @@ function FluidField({
     });
     const poly = placed.map(toGrid);
     stampObstacle(g, poly);
-  }, [airfoil, chord, aoa]);
+  }, [airfoil, chord, aoa, useCustomShape, cM, cP, cT]);
 
   useFrame((_, dtRaw) => {
     const g = gridRef.current;

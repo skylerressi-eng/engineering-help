@@ -46,6 +46,11 @@ export function generateAirfoil(id: AirfoilId, samples = 60): Vec2[] {
   return naca4(m, p, t, samples);
 }
 
+/** Public NACA 4-digit generator from raw M/P/T values (each 0..1 scale). */
+export function naca4Custom(m: number, p: number, t: number, samples = 60): Vec2[] {
+  return naca4(m, p, t, samples);
+}
+
 function naca4(m: number, p: number, t: number, samples: number): Vec2[] {
   const upper: Vec2[] = [];
   const lower: Vec2[] = [];
