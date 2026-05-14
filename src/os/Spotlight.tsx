@@ -3,7 +3,9 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Search, Sparkles } from 'lucide-react';
 import { useUIStore } from '@/store/uiStore';
 import { useWindowStore } from '@/store/windowStore';
+import { useAiStore } from '@/store/aiStore';
 import { APP_LIST } from '@/apps/registry';
+import { sendMessage } from '@/ai/conversation';
 
 type Result =
   | { kind: 'app'; id: string; name: string; description: string }
@@ -73,12 +75,15 @@ export default function Spotlight() {
     if (active >= results.length) setActive(0);
   }, [results.length, active]);
 
+  const openChat = useAiStore.getState().openChat;
+  const newChat = useAiStore.getState().newChat;
   const runResult = (r: Result) => {
     if (r.kind === 'app') {
       openApp(r.id, { title: APP_LIST.find((a) => a.manifest.id === r.id)?.manifest.name });
     } else {
-      // AI not built yet — placeholder behavior so the option works in Phase 1.
-      alert(`AI query (stub until Phase 2):\n${r.query}`);
+      newChat();
+      openChat();
+      sendMessage({ text: r.query });
     }
     close();
   };

@@ -5,8 +5,11 @@ import Dock from '@/os/Dock';
 import Window from '@/os/Window';
 import Spotlight from '@/os/Spotlight';
 import BootScreen from '@/os/BootScreen';
+import AiChat from '@/ai/AiChat';
+import AiFloatingButton from '@/ai/AiFloatingButton';
 import { useWindowStore } from '@/store/windowStore';
 import { useUIStore } from '@/store/uiStore';
+import { useAiStore } from '@/store/aiStore';
 import { useKeyboardShortcut } from '@/hooks/useKeyboardShortcut';
 
 export default function App() {
@@ -14,9 +17,11 @@ export default function App() {
   const toggleSpotlight = useUIStore((s) => s.toggleSpotlight);
   const closeSpotlight = useUIStore((s) => s.closeSpotlight);
   const booted = useUIStore((s) => s.booted);
+  const toggleChat = useAiStore((s) => s.toggleChat);
 
   useKeyboardShortcut({ key: 'k', meta: true }, useCallback(() => toggleSpotlight(), [toggleSpotlight]));
   useKeyboardShortcut({ key: ' ', meta: true }, useCallback(() => toggleSpotlight(), [toggleSpotlight]));
+  useKeyboardShortcut({ key: 'i', meta: true }, useCallback(() => toggleChat(), [toggleChat]));
   useKeyboardShortcut({ key: 'Escape' }, useCallback(() => closeSpotlight(), [closeSpotlight]));
 
   return (
@@ -32,6 +37,8 @@ export default function App() {
 
       <MenuBar />
       <Dock />
+      <AiFloatingButton />
+      <AiChat />
       <Spotlight />
 
       {!booted && <BootScreen />}

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Wifi, Battery, Search, Sparkles } from 'lucide-react';
 import { useWindowStore } from '@/store/windowStore';
 import { useUIStore } from '@/store/uiStore';
+import { useAiStore } from '@/store/aiStore';
 import { getApp } from '@/apps/registry';
 import { EngOSMark } from './BootScreen';
 
@@ -32,6 +33,7 @@ export default function MenuBar() {
   const focusedId = useWindowStore((s) => s.focusedId);
   const windows = useWindowStore((s) => s.windows);
   const toggleSpotlight = useUIStore((s) => s.toggleSpotlight);
+  const toggleChat = useAiStore((s) => s.toggleChat);
   const now = useNow();
   const batt = useFakeBattery();
   const [logoOpen, setLogoOpen] = useState(false);
@@ -110,6 +112,7 @@ export default function MenuBar() {
       <div className="ml-auto flex items-center gap-3">
         <button
           title="EngOS AI (Cmd+I)"
+          onClick={toggleChat}
           className="flex items-center gap-1 hover:bg-white/15 rounded px-1"
         >
           <Sparkles size={14} className="text-pink-300" />
