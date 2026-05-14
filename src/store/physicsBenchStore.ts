@@ -7,6 +7,9 @@ export type Tool =
   | 'select'
   | 'circle'
   | 'box'
+  | 'triangle'
+  | 'pentagon'
+  | 'hexagon'
   | 'rope'
   | 'spring'
   | 'pin'
@@ -27,6 +30,8 @@ interface PhysicsBenchStore {
   tool: Tool;
   selectedId: string | null;
   debug: DebugFlags;
+  /** Material id selected in the toolbar — applied to bodies spawned next. */
+  currentMaterial: string;
   /** Increments when world structure changes (so UI re-renders) */
   rev: number;
 
@@ -36,6 +41,7 @@ interface PhysicsBenchStore {
   setTool: (t: Tool) => void;
   setSelected: (id: string | null) => void;
   setDebug: (k: keyof DebugFlags, v: boolean) => void;
+  setMaterial: (id: string) => void;
 
   /** Replace the world from a fresh demo */
   loadDemo: (id: DemoId) => void;
@@ -56,6 +62,7 @@ export const usePhysicsBenchStore = create<PhysicsBenchStore>((set, get) => ({
   tool: 'select',
   selectedId: null,
   debug: { velocity: false, forces: false, aabb: false, contacts: false, sleep: true },
+  currentMaterial: 'plastic',
   rev: 0,
 
   setRunning: (b) => set({ running: b }),
@@ -64,6 +71,7 @@ export const usePhysicsBenchStore = create<PhysicsBenchStore>((set, get) => ({
   setTool: (t) => set({ tool: t }),
   setSelected: (id) => set({ selectedId: id }),
   setDebug: (k, v) => set((s) => ({ debug: { ...s.debug, [k]: v } })),
+  setMaterial: (id) => set({ currentMaterial: id }),
 
   loadDemo: (id) => {
     set({ world: buildDemo(id), selectedId: null, rev: get().rev + 1 });

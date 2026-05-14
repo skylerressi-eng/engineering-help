@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Calculator as CalcIcon, Clock, Trash2 } from 'lucide-react';
+import { Clock, Trash2 } from 'lucide-react';
+import { CalculatorIcon } from '@/apps/icons';
 import type { AppModule } from '@/os/types';
 import {
   evaluate,
@@ -492,7 +493,7 @@ const module: AppModule = {
     id: 'calculator',
     name: 'Calculator',
     description: 'Scientific + Programmer calculator with bitwise ops and history',
-    icon: CalcIcon,
+    icon: CalculatorIcon,
     defaultSize: { width: 480, height: 540 },
     accent: 'linear-gradient(135deg, #0ea5e9 0%, #6366f1 100%)',
   },

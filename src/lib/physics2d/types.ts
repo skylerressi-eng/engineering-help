@@ -57,6 +57,17 @@ export function makeBox(halfW: number, halfH: number): PolygonShape {
   return makePolygonFromVertices(vertices);
 }
 
+/** N-sided regular polygon inscribed in `radius`. N must be 3..16. */
+export function makeRegularPolygon(n: number, radius: number, rotation = 0): PolygonShape {
+  n = Math.max(3, Math.min(16, Math.round(n)));
+  const verts: Vec2[] = [];
+  for (let i = 0; i < n; i++) {
+    const a = rotation + (i / n) * Math.PI * 2;
+    verts.push(v(Math.cos(a) * radius, Math.sin(a) * radius));
+  }
+  return makePolygonFromVertices(verts);
+}
+
 export function makePolygonFromVertices(vertices: Vec2[]): PolygonShape {
   const normals: Vec2[] = [];
   for (let i = 0; i < vertices.length; i++) {

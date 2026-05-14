@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import type { WindowState } from '@/os/types';
 import { useWindowStore } from '@/store/windowStore';
 import { getApp } from '@/apps/registry';
+import ErrorBoundary from '@/os/ErrorBoundary';
 
 const TITLE_BAR_HEIGHT = 36;
 
@@ -63,7 +64,7 @@ export default function Window({ state }: { state: WindowState }) {
             exit={{ opacity: 0, scale: 0.93 }}
             transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
             onMouseDown={() => focusWindow(state.id)}
-            className={`flex flex-col w-full h-full overflow-hidden rounded-xl border ${
+            className={`flex flex-col w-full h-full overflow-hidden rounded-2xl border ${
               focused
                 ? 'border-white/20 shadow-window'
                 : 'border-white/10 shadow-window-unfocused'
@@ -71,6 +72,9 @@ export default function Window({ state }: { state: WindowState }) {
             style={{
               backdropFilter: 'blur(36px) saturate(180%)',
               WebkitBackdropFilter: 'blur(36px) saturate(180%)',
+              boxShadow: focused
+                ? '0 22px 50px -12px rgba(0,0,0,0.55), 0 4px 10px rgba(0,0,0,0.30), inset 0 1px 0 rgba(255,255,255,0.08)'
+                : '0 8px 24px -10px rgba(0,0,0,0.40), inset 0 1px 0 rgba(255,255,255,0.05)',
             }}
           >
             {/* Title bar */}
@@ -107,7 +111,9 @@ export default function Window({ state }: { state: WindowState }) {
 
             {/* App content */}
             <div className="flex-1 overflow-auto app-content text-white/90">
-              <app.Component windowId={state.id} appId={state.appId} />
+              <ErrorBoundary label={app.manifest.name}>
+                <app.Component windowId={state.id} appId={state.appId} />
+              </ErrorBoundary>
             </div>
           </motion.div>
         </Rnd>

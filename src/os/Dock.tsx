@@ -31,12 +31,17 @@ export default function Dock() {
           if (rect) mouseX.set(e.clientX - rect.left);
         }}
         onMouseLeave={() => mouseX.set(null)}
-        className="pointer-events-auto glass-strong glass-edge rounded-2xl px-3 flex items-end gap-2 shadow-window"
+        className="pointer-events-auto rounded-3xl px-3 flex items-end gap-2"
         style={{
           height: ICON_MAX,
           paddingBottom: 6,
           paddingTop: 6,
-          background: 'rgba(255,255,255,0.16)',
+          background: 'rgba(28, 28, 36, 0.55)',
+          backdropFilter: 'blur(34px) saturate(180%)',
+          WebkitBackdropFilter: 'blur(34px) saturate(180%)',
+          border: '1px solid rgba(255,255,255,0.16)',
+          boxShadow:
+            '0 12px 36px -8px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.18)',
         }}
       >
         {APP_LIST.filter((a) => !a.manifest.hideFromDock).map((app, i) => (
@@ -140,12 +145,13 @@ function DockIcon({
       )}
       <motion.button
         onClick={onClick}
-        style={{ width: size, height: size }}
+        style={{ width: size, height: size, borderRadius: '26%' }}
         whileTap={{ scale: 0.92 }}
-        className={`relative rounded-xl flex items-center justify-center shadow-lg border border-white/10 overflow-hidden ${
+        className={`relative flex items-center justify-center shadow-lg border border-white/15 overflow-hidden ${
           launching ? 'animate-dock-bounce' : ''
         }`}
       >
+        {/* base gradient */}
         <div
           className="absolute inset-0"
           style={{
@@ -153,12 +159,33 @@ function DockIcon({
               app.accent ?? 'linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%)',
           }}
         />
-        <Icon className="text-white drop-shadow relative z-10" size={Math.max(20, iconBase * 0.5)} />
+        {/* glossy top sheen */}
+        <div
+          className="absolute inset-x-0 top-0 h-1/2 pointer-events-none"
+          style={{
+            background:
+              'linear-gradient(180deg, rgba(255,255,255,0.30) 0%, rgba(255,255,255,0.00) 100%)',
+          }}
+        />
+        {/* inner ring + soft inset shadow at the bottom */}
+        <div
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            borderRadius: '26%',
+            boxShadow:
+              'inset 0 1px 0 rgba(255,255,255,0.35), inset 0 -8px 14px -8px rgba(0,0,0,0.40)',
+          }}
+        />
+        <Icon
+          className="text-white drop-shadow relative z-10"
+          size={Math.max(20, iconBase * 0.52)}
+          strokeWidth={1.8}
+        />
       </motion.button>
       {/* running indicator */}
       <div
-        className={`absolute -bottom-1 w-1 h-1 rounded-full transition-all ${
-          running ? 'bg-white/90' : 'bg-transparent'
+        className={`absolute -bottom-0.5 w-1.5 h-1.5 rounded-full transition-all ${
+          running ? 'bg-white/90 shadow-[0_0_4px_rgba(255,255,255,0.5)]' : 'bg-transparent'
         }`}
       />
     </div>
@@ -183,12 +210,23 @@ function TrashIcon({
       style={{ width: iconMax, height: iconMax }}
     >
       <motion.button
-        style={{ width: size, height: size }}
+        style={{ width: size, height: size, borderRadius: '26%' }}
         whileTap={{ scale: 0.92 }}
-        className="rounded-xl flex items-center justify-center bg-white/10 border border-white/15 backdrop-blur-md"
+        className="relative flex items-center justify-center bg-white/8 border border-white/15 backdrop-blur-md overflow-hidden"
         title="Trash"
       >
-        <Trash2 className="text-white/85" size={Math.max(20, iconBase * 0.45)} />
+        <div
+          className="absolute inset-x-0 top-0 h-1/2 pointer-events-none"
+          style={{
+            background:
+              'linear-gradient(180deg, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0) 100%)',
+          }}
+        />
+        <Trash2
+          className="text-white/85 relative z-10"
+          size={Math.max(20, iconBase * 0.46)}
+          strokeWidth={1.8}
+        />
       </motion.button>
     </div>
   );

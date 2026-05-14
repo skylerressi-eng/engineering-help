@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Zap,
   Play,
   Activity,
   Trash2,
   Plus,
   Download,
+  BookOpen,
+  ChevronDown,
 } from 'lucide-react';
+import { CircuitSimIcon } from '@/apps/icons';
 import type { AppModule } from '@/os/types';
 import {
   COMPONENT_SPECS,
@@ -16,6 +18,7 @@ import {
 import type { CompType, CircuitComp } from '@/lib/circuitSolver/types';
 import { useAppTools } from '@/hooks/useToolRegistry';
 import { publishAppState } from '@/ai/screenScanner';
+import { CIRCUIT_PRESETS, type CircuitPreset } from '@/lib/circuitSolver/presets';
 
 const PALETTE_ORDER: CompType[] = [
   'resistor',
@@ -250,7 +253,28 @@ function CircuitSim({ appId }: { appId: string }) {
             />
             s
           </div>
-          <div className="ml-auto">
+          <div className="ml-auto flex items-center gap-1">
+            <PresetMenu
+              onPick={(preset) => {
+                useCircuitSimStore.getState().clear();
+                const store = useCircuitSimStore.getState();
+                const idMap = new Map<string, string>();
+                for (const c of preset.components) {
+                  const newId = store.addComponent(c.type, c.x, c.y);
+                  idMap.set(c.id, newId);
+                  store.setValue(newId, c.value, c.freq);
+                }
+                for (const [a, b] of preset.wires) {
+                  const remap = (s: string) => {
+                    const [cid, p] = s.split('.');
+                    const r = idMap.get(cid);
+                    return r ? `${r}.${p}` : s;
+                  };
+                  store.beginWire(remap(a));
+                  store.completeWire(remap(b));
+                }
+              }}
+            />
             <button
               onClick={clear}
               className="flex items-center gap-1 px-2 h-6 rounded-md text-xs hover:bg-white/10"
@@ -905,12 +929,44 @@ function quickFFT(input: number[]): Array<[number, number]> {
   return out;
 }
 
+function PresetMenu({ onPick }: { onPick: (p: CircuitPreset) => void }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="flex items-center gap-1 px-2 h-6 rounded-md text-xs hover:bg-white/10"
+      >
+        <BookOpen size={12} /> Templates <ChevronDown size={11} />
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full mt-1 glass-strong rounded-md min-w-[240px] py-1 z-30 shadow-window">
+          {CIRCUIT_PRESETS.map((p) => (
+            <button
+              key={p.id}
+              onClick={() => {
+                onPick(p);
+                setOpen(false);
+              }}
+              title={p.description}
+              className="block w-full text-left px-2 py-1 text-xs hover:bg-white/10"
+            >
+              <div className="font-medium text-white">{p.name}</div>
+              <div className="text-[10px] text-white/50 truncate">{p.description}</div>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 const module: AppModule = {
   manifest: {
     id: 'circuitsim',
     name: 'CircuitSim',
     description: 'Analog circuits with MNA solver, transient analysis, scope',
-    icon: Zap,
+    icon: CircuitSimIcon,
     defaultSize: { width: 1100, height: 680 },
     accent: 'linear-gradient(135deg, #facc15 0%, #f97316 100%)',
   },

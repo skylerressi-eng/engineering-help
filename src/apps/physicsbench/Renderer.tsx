@@ -1,7 +1,14 @@
 import { useEffect, useRef } from 'react';
 import { usePhysicsBenchStore, findBodyAt, type Tool } from '@/store/physicsBenchStore';
-import { makeBody, makeCircle, makeBox, type Body } from '@/lib/physics2d/types';
+import {
+  makeBody,
+  makeCircle,
+  makeBox,
+  makeRegularPolygon,
+  type Body,
+} from '@/lib/physics2d/types';
 import { makeDistance, makePin, makeSpring, worldAnchor } from '@/lib/physics2d/constraints';
+import { findMaterial } from '@/lib/physics2d/materials';
 
 /**
  * The viewport maps world units (meters) to canvas pixels. Origin is centered.
@@ -102,18 +109,25 @@ export default function Renderer() {
         const ly = (wp.x - body.pos.x) * s + (wp.y - body.pos.y) * c;
         dragRef.current = { body, grabLocal: { x: lx, y: ly } };
       }
-    } else if (tool === 'circle') {
-      spawn(makeBody(makeCircle(0.3 + Math.random() * 0.25), {
-        pos: wp,
-        restitution: 0.4,
-        friction: 0.5,
-      }));
-    } else if (tool === 'box') {
-      spawn(makeBody(makeBox(0.35, 0.35), {
-        pos: wp,
-        restitution: 0.2,
-        friction: 0.6,
-      }));
+    } else if (tool === 'circle' || tool === 'box' || tool === 'triangle' || tool === 'pentagon' || tool === 'hexagon') {
+      const matId = usePhysicsBenchStore.getState().currentMaterial;
+      const mat = findMaterial(matId);
+      const params = mat
+        ? {
+            pos: wp,
+            density: mat.density,
+            restitution: mat.restitution,
+            friction: mat.friction,
+            color: mat.color,
+          }
+        : { pos: wp, restitution: 0.3, friction: 0.5 };
+      let body: Body;
+      if (tool === 'circle') body = makeBody(makeCircle(0.3 + Math.random() * 0.2), params);
+      else if (tool === 'box') body = makeBody(makeBox(0.35, 0.35), params);
+      else if (tool === 'triangle') body = makeBody(makeRegularPolygon(3, 0.45), params);
+      else if (tool === 'pentagon') body = makeBody(makeRegularPolygon(5, 0.42), params);
+      else body = makeBody(makeRegularPolygon(6, 0.4), params);
+      spawn(body);
     } else if (tool === 'rope' || tool === 'spring' || tool === 'pin') {
       if (!body) return;
       const c = Math.cos(-body.angle);

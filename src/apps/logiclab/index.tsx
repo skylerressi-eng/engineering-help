@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { Cpu, FilePlus, Save, Upload, Play, Pause, Table2, RotateCcw } from 'lucide-react';
+import { FilePlus, Save, Upload, Play, Pause, Table2, RotateCcw, BookOpen, ChevronDown } from 'lucide-react';
+import { LogicLabIcon } from '@/apps/icons';
 import type { AppModule } from '@/os/types';
 import Palette from './Palette';
 import Canvas from './Canvas';
@@ -10,6 +11,7 @@ import { useAppTools } from '@/hooks/useToolRegistry';
 import { publishAppState } from '@/ai/screenScanner';
 import type { GateType, Circuit, Bit } from '@/lib/logicsim/types';
 import { pinId } from '@/lib/logicsim/types';
+import { PRESETS } from '@/lib/logicsim/presets';
 
 function LogicLab({ appId }: { appId: string }) {
   const tick = useLogicLabStore((s) => s.tick);
@@ -21,6 +23,7 @@ function LogicLab({ appId }: { appId: string }) {
   const components = useLogicLabStore((s) => s.components);
   const connections = useLogicLabStore((s) => s.connections);
   const [showTable, setShowTable] = useState(false);
+  const [presetsOpen, setPresetsOpen] = useState(false);
 
   // Animation loop driving the simulator
   useEffect(() => {
@@ -251,6 +254,33 @@ function LogicLab({ appId }: { appId: string }) {
         <ToolbarButton onClick={() => setShowTable(true)} title="Truth Table">
           <Table2 size={13} /> Truth Table
         </ToolbarButton>
+        <div className="mx-1 w-px h-4 bg-white/15" />
+        <div className="relative">
+          <button
+            onClick={() => setPresetsOpen((o) => !o)}
+            className="flex items-center gap-1 px-2 h-7 rounded-md text-xs hover:bg-white/10 text-white/80"
+          >
+            <BookOpen size={13} /> Templates <ChevronDown size={11} />
+          </button>
+          {presetsOpen && (
+            <div className="absolute top-full left-0 mt-1 glass-strong rounded-md min-w-[220px] py-1 z-30 shadow-window">
+              {PRESETS.map((p) => (
+                <button
+                  key={p.id}
+                  onClick={() => {
+                    load(p.build());
+                    setPresetsOpen(false);
+                  }}
+                  title={p.description}
+                  className="block w-full text-left px-2 py-1 text-xs hover:bg-white/10"
+                >
+                  <div className="font-medium text-white">{p.name}</div>
+                  <div className="text-[10px] text-white/50 truncate">{p.description}</div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Main layout */}
@@ -299,7 +329,7 @@ const module: AppModule = {
     id: 'logiclab',
     name: 'LogicLab',
     description: 'Build and simulate digital logic circuits',
-    icon: Cpu,
+    icon: LogicLabIcon,
     defaultSize: { width: 980, height: 620 },
     accent: 'linear-gradient(135deg, #22c55e 0%, #0ea5e9 100%)',
   },

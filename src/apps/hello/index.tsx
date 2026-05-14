@@ -1,5 +1,5 @@
-import { Sparkles } from 'lucide-react';
 import type { AppModule } from '@/os/types';
+import { HelloIcon } from '@/apps/icons';
 
 function HelloApp() {
   return (
@@ -19,7 +19,7 @@ const module: AppModule = {
     id: 'hello',
     name: 'Hello',
     description: 'Phase 1 test app — confirms the window system works',
-    icon: Sparkles,
+    icon: HelloIcon,
     defaultSize: { width: 560, height: 360 },
     accent: 'linear-gradient(135deg, #6366f1 0%, #ec4899 100%)',
     hideFromDock: true,

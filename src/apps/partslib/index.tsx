@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, PresentationControls, Center } from '@react-three/drei';
 import { Search, Boxes, Download } from 'lucide-react';
+import { PartsIcon } from '@/apps/icons';
 import * as THREE from 'three';
 import type { AppModule } from '@/os/types';
 import {
@@ -359,7 +360,7 @@ const module: AppModule = {
     id: 'partslib',
     name: 'PartsLib',
     description: 'Procedural mechanical parts library — bolts, gears, bearings, springs',
-    icon: Boxes,
+    icon: PartsIcon,
     defaultSize: { width: 1100, height: 660 },
     accent: 'linear-gradient(135deg, #84cc16 0%, #10b981 100%)',
   },

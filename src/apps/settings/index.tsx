@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react';
-import { Settings as SettingsIcon, Sliders, Palette, Sparkles, Keyboard, Info, RotateCcw, Upload } from 'lucide-react';
+import { Sliders, Palette, Sparkles, Keyboard, Info, RotateCcw, Upload } from 'lucide-react';
+import { SettingsIcon } from '@/apps/icons';
 import type { AppModule } from '@/os/types';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useUIStore, WALLPAPERS } from '@/store/uiStore';

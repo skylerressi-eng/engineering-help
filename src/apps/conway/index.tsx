@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { Play, Pause, StepForward, Trash2, Shuffle, Sparkles, Grid3x3 } from 'lucide-react';
+import { Play, Pause, StepForward, Trash2, Shuffle, Sparkles } from 'lucide-react';
+import { ConwayIcon } from '@/apps/icons';
 import type { AppModule } from '@/os/types';
 import {
   PATTERNS,
@@ -439,7 +440,7 @@ const module: AppModule = {
     id: 'conway',
     name: 'Conway',
     description: "Conway's Game of Life — patterns, drag-to-paint, AI control",
-    icon: Grid3x3,
+    icon: ConwayIcon,
     defaultSize: { width: 940, height: 600 },
     accent: 'linear-gradient(135deg, #22d3ee 0%, #6366f1 100%)',
   },

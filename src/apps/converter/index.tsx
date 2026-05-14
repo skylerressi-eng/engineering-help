@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowLeftRight, Ruler } from 'lucide-react';
+import { ArrowLeftRight } from 'lucide-react';
+import { ConverterIcon } from '@/apps/icons';
 import type { AppModule } from '@/os/types';
 import {
   CATEGORIES,
@@ -22,42 +23,59 @@ function Converter({ appId }: { appId: string }) {
 
   const category = useMemo(() => getCategory(categoryId), [categoryId]);
 
-  // When category changes, pick the first two units as defaults
+  // Derive a SAFE unit synchronously: if the stored fromUnit/toUnit doesn't
+  // belong to the current category, fall back to the first/second unit of the
+  // category. Avoids the convert() throw that would blank the whole window.
+  const safeFromUnit = category.units.find((u) => u.id === fromUnit)
+    ? fromUnit
+    : category.units[0].id;
+  const safeToUnit = category.units.find((u) => u.id === toUnit)
+    ? toUnit
+    : category.units[1]?.id ?? category.units[0].id;
+
+  // Reconcile the stored state to the safe one in an effect (so the next
+  // render is consistent). We avoid touching state during render.
   useEffect(() => {
-    if (!category.units.find((u) => u.id === fromUnit)) {
-      setFromUnit(category.units[0].id);
-    }
-    if (!category.units.find((u) => u.id === toUnit)) {
-      setToUnit(category.units[1]?.id ?? category.units[0].id);
-    }
+    if (safeFromUnit !== fromUnit) setFromUnit(safeFromUnit);
+    if (safeToUnit !== toUnit) setToUnit(safeToUnit);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [categoryId]);
+  }, [safeFromUnit, safeToUnit]);
 
   const numericInput = parseFloat(input);
-  const output =
-    Number.isFinite(numericInput) && fromUnit && toUnit
-      ? formatValue(convert(numericInput, fromUnit, toUnit, categoryId), {
-          engineering,
-          precision,
-        })
-      : '—';
+  let output: string;
+  try {
+    output =
+      Number.isFinite(numericInput) && safeFromUnit && safeToUnit
+        ? formatValue(convert(numericInput, safeFromUnit, safeToUnit, categoryId), {
+            engineering,
+            precision,
+          })
+        : '—';
+  } catch (err) {
+    output = '—';
+    console.warn('convert failed', err);
+  }
 
   const swap = () => {
-    setFromUnit(toUnit);
-    setToUnit(fromUnit);
+    setFromUnit(safeToUnit);
+    setToUnit(safeFromUnit);
     if (Number.isFinite(numericInput)) {
-      const v = convert(numericInput, fromUnit, toUnit, categoryId);
-      setInput(String(v));
+      try {
+        const v = convert(numericInput, safeFromUnit, safeToUnit, categoryId);
+        setInput(String(v));
+      } catch {
+        /* ignore */
+      }
     }
   };
 
   // Publish state for scanner
   useEffect(() => {
     return publishAppState(appId, () => ({
-      summary: `Unit Converter is showing category "${category.label}". Converting ${input} ${fromUnit} = ${output} ${toUnit}.`,
-      state: { category: categoryId, fromUnit, toUnit, input, output, engineering, precision },
+      summary: `Unit Converter is showing category "${category.label}". Converting ${input} ${safeFromUnit} = ${output} ${safeToUnit}.`,
+      state: { category: categoryId, fromUnit: safeFromUnit, toUnit: safeToUnit, input, output, engineering, precision },
     }));
-  }, [appId, categoryId, fromUnit, toUnit, input, output, engineering, precision, category.label]);
+  }, [appId, categoryId, safeFromUnit, safeToUnit, input, output, engineering, precision, category.label]);
 
   // AI tool
   useAppTools(appId, [
@@ -119,7 +137,7 @@ function Converter({ appId }: { appId: string }) {
       <div className="flex-1 p-4 flex flex-col gap-4 min-h-0">
         <div className="grid grid-cols-[1fr_auto_1fr] gap-3 items-stretch">
           <UnitPicker
-            value={fromUnit}
+            value={safeFromUnit}
             onChange={setFromUnit}
             categoryId={categoryId}
             input={input}
@@ -134,7 +152,7 @@ function Converter({ appId }: { appId: string }) {
             <ArrowLeftRight size={16} />
           </button>
           <UnitPicker
-            value={toUnit}
+            value={safeToUnit}
             onChange={setToUnit}
             categoryId={categoryId}
             input={output}
@@ -175,7 +193,7 @@ function Converter({ appId }: { appId: string }) {
                 key={u.id}
                 onClick={() => setToUnit(u.id)}
                 className={`px-2 py-0.5 rounded-md ${
-                  toUnit === u.id
+                  safeToUnit === u.id
                     ? 'bg-accent text-white'
                     : 'bg-white/5 hover:bg-white/10 text-white/75'
                 }`}
@@ -237,7 +255,7 @@ const module: AppModule = {
     id: 'converter',
     name: 'Unit Converter',
     description: 'Convert between engineering units (length, force, pressure, energy, etc.)',
-    icon: Ruler,
+    icon: ConverterIcon,
     defaultSize: { width: 600, height: 460 },
     accent: 'linear-gradient(135deg, #14b8a6 0%, #06b6d4 100%)',
   },

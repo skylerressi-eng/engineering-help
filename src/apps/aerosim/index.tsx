@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Wind, ChevronDown, BarChart3, X } from 'lucide-react';
+import { ChevronDown, BarChart3, X } from 'lucide-react';
+import { AeroIcon } from '@/apps/icons';
 import type { AppModule } from '@/os/types';
 import { useAerosimStore, type AeroMode, type VizMode } from '@/store/aerosimStore';
 import { AIRFOILS, type AirfoilId } from '@/lib/cfd/naca';
@@ -449,7 +450,7 @@ const module: AppModule = {
     id: 'aerosim',
     name: 'AeroSim',
     description: 'NACA airfoils, lift/drag, streamlines & stable-fluids CFD',
-    icon: Wind,
+    icon: AeroIcon,
     defaultSize: { width: 1040, height: 640 },
     accent: 'linear-gradient(135deg, #0ea5e9 0%, #22d3ee 100%)',
   },

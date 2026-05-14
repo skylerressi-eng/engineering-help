@@ -19,6 +19,9 @@ import {
   Download,
   ChevronRight,
   ChevronDown,
+  PenLine,
+  X as XIcon,
+  Undo2,
 } from 'lucide-react';
 import * as THREE from 'three';
 import type { AppModule } from '@/os/types';
@@ -33,6 +36,8 @@ import type { Modifier, ModifierKind } from '@/lib/modeler/modifiers';
 import { useAppTools } from '@/hooks/useToolRegistry';
 import { publishAppState } from '@/ai/screenScanner';
 import { downloadBlob, toASCIISTL, toBinarySTL, toOBJ } from '@/lib/modeler/exporters';
+import { extrudePolygon } from '@/lib/modeler/primitives';
+import { ModelerIcon } from '@/apps/icons';
 
 function Modeler3D({ appId }: { appId: string }) {
   const objects = useModelerStore((s) => s.objects);
@@ -338,6 +343,8 @@ function Modeler3D({ appId }: { appId: string }) {
         <div className="h-8 flex items-center px-2 gap-1 border-b border-white/10 chrome">
           <PrimitiveMenu onAdd={addPrimitive} />
           <BooleanMenu />
+          <SketchButton />
+          <PresetMenu3D />
           <div className="ml-2 flex items-center gap-1">
             {(['object', 'vertex', 'edge', 'face'] as EditMode[]).map((m) => (
               <button
@@ -431,6 +438,12 @@ function PrimitiveMenu({ onAdd }: { onAdd: (t: PrimitiveType) => void }) {
     { type: 'cone', icon: Cone, label: 'Cone' },
     { type: 'torus', icon: Disc3, label: 'Torus' },
     { type: 'plane', icon: Square, label: 'Plane' },
+    { type: 'capsule', icon: CircleIcon, label: 'Capsule' },
+    { type: 'torusKnot', icon: Disc3, label: 'Torus Knot' },
+    { type: 'tetrahedron', icon: Box, label: 'Tetrahedron' },
+    { type: 'octahedron', icon: Box, label: 'Octahedron' },
+    { type: 'icosahedron', icon: Box, label: 'Icosahedron' },
+    { type: 'dodecahedron', icon: Box, label: 'Dodecahedron' },
   ];
   return (
     <div className="relative">
@@ -909,12 +922,243 @@ function ToolBtn({
 void Eye;
 void EyeOff;
 
+function SketchButton() {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button
+        onClick={() => setOpen(true)}
+        className="flex items-center gap-1 px-2 h-6 rounded-md text-xs hover:bg-white/10 text-white/80"
+      >
+        <PenLine size={12} /> Sketch
+      </button>
+      {open && <SketchModal onClose={() => setOpen(false)} />}
+    </>
+  );
+}
+
+function SketchModal({ onClose }: { onClose: () => void }) {
+  const [points, setPoints] = useState<{ x: number; y: number }[]>([]);
+  const [depth, setDepth] = useState(0.4);
+  const [bevel, setBevel] = useState(0);
+  const [name, setName] = useState('Sketch');
+  const W = 360;
+  const H = 280;
+  const PAD = 16;
+
+  const onCanvasClick = (e: React.MouseEvent<SVGSVGElement>) => {
+    const r = (e.currentTarget as SVGSVGElement).getBoundingClientRect();
+    const x = e.clientX - r.left;
+    const y = e.clientY - r.top;
+    // Snap to 8 px grid
+    const sx = Math.round(x / 8) * 8;
+    const sy = Math.round(y / 8) * 8;
+    setPoints((p) => [...p, { x: sx, y: sy }]);
+  };
+
+  const undo = () => setPoints((p) => p.slice(0, -1));
+  const clear = () => setPoints([]);
+
+  const extrude = () => {
+    if (points.length < 3) return;
+    // Convert from screen coords (px) to model units (centered at origin, y inverted)
+    const modelPts = points.map((p) => ({
+      x: (p.x - W / 2) / 60,
+      y: -(p.y - H / 2) / 60,
+    }));
+    const geom = extrudePolygon(modelPts, depth, bevel);
+    useModelerStore.getState().addCustomObject(name || 'Sketch', geom);
+    onClose();
+  };
+
+  const pathD = points.length
+    ? points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ') +
+      (points.length >= 3 ? ` L ${points[0].x} ${points[0].y}` : '')
+    : '';
+
+  return (
+    <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/55">
+      <div className="rounded-2xl glass-strong w-[460px] max-w-[92%] p-4 text-white">
+        <div className="flex items-center mb-2">
+          <div className="font-semibold text-sm">2D Sketch → Extrude</div>
+          <button onClick={onClose} className="ml-auto p-1 rounded hover:bg-white/10">
+            <XIcon size={13} />
+          </button>
+        </div>
+        <div className="text-[11px] text-white/55 mb-2">
+          Click to add corner points. Add at least 3, then Extrude. Use Undo to remove the last point.
+        </div>
+        <svg
+          viewBox={`0 0 ${W} ${H}`}
+          width={W}
+          height={H}
+          onClick={onCanvasClick}
+          className="bg-black/40 rounded-lg cursor-crosshair block mx-auto"
+        >
+          <defs>
+            <pattern id="sk-grid" width={8} height={8} patternUnits="userSpaceOnUse">
+              <circle cx={0.5} cy={0.5} r={0.6} fill="rgba(255,255,255,0.18)" />
+            </pattern>
+          </defs>
+          <rect width={W} height={H} fill="url(#sk-grid)" />
+          <line x1={W / 2} y1={PAD} x2={W / 2} y2={H - PAD} stroke="rgba(255,255,255,0.1)" />
+          <line x1={PAD} y1={H / 2} x2={W - PAD} y2={H / 2} stroke="rgba(255,255,255,0.1)" />
+          {pathD && <path d={pathD} fill="rgba(10,132,255,0.18)" stroke="#0A84FF" strokeWidth={1.5} />}
+          {points.map((p, i) => (
+            <circle key={i} cx={p.x} cy={p.y} r={3} fill="#fff" stroke="#0A84FF" />
+          ))}
+        </svg>
+        <div className="grid grid-cols-2 gap-3 mt-3 text-xs">
+          <label className="flex items-center gap-2">
+            <span className="w-12 text-white/55">depth</span>
+            <input
+              type="range"
+              min={0.05}
+              max={2}
+              step={0.05}
+              value={depth}
+              onChange={(e) => setDepth(parseFloat(e.target.value))}
+              className="flex-1"
+            />
+            <span className="font-mono w-8 text-right">{depth.toFixed(2)}</span>
+          </label>
+          <label className="flex items-center gap-2">
+            <span className="w-12 text-white/55">bevel</span>
+            <input
+              type="range"
+              min={0}
+              max={0.2}
+              step={0.01}
+              value={bevel}
+              onChange={(e) => setBevel(parseFloat(e.target.value))}
+              className="flex-1"
+            />
+            <span className="font-mono w-8 text-right">{bevel.toFixed(2)}</span>
+          </label>
+        </div>
+        <div className="mt-3 flex items-center gap-2">
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            className="flex-1 bg-white/5 border border-white/10 rounded-md px-2 py-1 text-xs outline-none"
+            placeholder="Object name"
+          />
+          <button
+            onClick={undo}
+            disabled={points.length === 0}
+            className="px-2 py-1 rounded-md text-xs bg-white/10 hover:bg-white/15 disabled:opacity-40 flex items-center gap-1"
+          >
+            <Undo2 size={11} /> Undo
+          </button>
+          <button
+            onClick={clear}
+            disabled={points.length === 0}
+            className="px-2 py-1 rounded-md text-xs bg-white/10 hover:bg-white/15 disabled:opacity-40"
+          >
+            Clear
+          </button>
+          <button
+            onClick={extrude}
+            disabled={points.length < 3}
+            className="px-3 py-1 rounded-md text-xs bg-accent hover:bg-accent-hover text-white disabled:opacity-40"
+          >
+            Extrude
+          </button>
+        </div>
+        <div className="mt-2 text-[10px] text-white/40 text-right font-mono">
+          {points.length} pt{points.length === 1 ? '' : 's'}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const PRESET_BUILDS: Record<string, () => THREE.BufferGeometry> = {
+  table: () => {
+    const top = new THREE.BoxGeometry(1.4, 0.06, 0.8);
+    return top; // simplified: top only for the default; real ones use boolean ops
+  },
+  // The presets below are intentionally simple — single primitive scenes that
+  // give the user a one-click starter. They're light on geometry so they load fast.
+  vase: () => new THREE.LatheGeometry(
+    Array.from({ length: 12 }, (_, i) => new THREE.Vector2(
+      0.25 + 0.15 * Math.sin((i / 11) * Math.PI),
+      i * 0.12,
+    )),
+    32,
+  ),
+  donut: () => new THREE.TorusGeometry(0.5, 0.18, 16, 32),
+  arrow: () => {
+    const shape = new THREE.Shape();
+    shape.moveTo(0, 0.4);
+    shape.lineTo(0.2, 0.0);
+    shape.lineTo(0.08, 0.0);
+    shape.lineTo(0.08, -0.4);
+    shape.lineTo(-0.08, -0.4);
+    shape.lineTo(-0.08, 0.0);
+    shape.lineTo(-0.2, 0.0);
+    shape.lineTo(0, 0.4);
+    return new THREE.ExtrudeGeometry(shape, { depth: 0.12, bevelEnabled: false });
+  },
+  star: () => {
+    const shape = new THREE.Shape();
+    const N = 5;
+    for (let i = 0; i < N * 2; i++) {
+      const a = (i / (N * 2)) * Math.PI * 2 - Math.PI / 2;
+      const r = i % 2 === 0 ? 0.5 : 0.22;
+      const x = Math.cos(a) * r;
+      const y = Math.sin(a) * r;
+      if (i === 0) shape.moveTo(x, y);
+      else shape.lineTo(x, y);
+    }
+    return new THREE.ExtrudeGeometry(shape, { depth: 0.15, bevelEnabled: false });
+  },
+};
+
+function PresetMenu3D() {
+  const [open, setOpen] = useState(false);
+  const items: { id: keyof typeof PRESET_BUILDS; label: string }[] = [
+    { id: 'donut', label: 'Donut' },
+    { id: 'vase', label: 'Vase (Lathe)' },
+    { id: 'arrow', label: 'Arrow' },
+    { id: 'star', label: 'Star' },
+    { id: 'table', label: 'Slab' },
+  ];
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="flex items-center gap-1 px-2 h-6 rounded-md text-xs hover:bg-white/10 text-white/80"
+      >
+        Templates <ChevronDown size={11} />
+      </button>
+      {open && (
+        <div className="absolute top-full left-0 mt-1 glass-strong rounded-md py-1 min-w-[160px] z-30 shadow-window">
+          {items.map((it) => (
+            <button
+              key={it.id}
+              onClick={() => {
+                const g = PRESET_BUILDS[it.id]();
+                useModelerStore.getState().addCustomObject(it.label, g);
+                setOpen(false);
+              }}
+              className="w-full text-left px-2 py-1 text-xs hover:bg-white/10"
+            >
+              {it.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 const module: AppModule = {
   manifest: {
     id: 'modeler3d',
     name: 'Modeler3D',
     description: 'Custom 3D modeling tool with primitives, booleans, and modifiers',
-    icon: Box,
+    icon: ModelerIcon,
     defaultSize: { width: 1080, height: 660 },
     accent: 'linear-gradient(135deg, #f472b6 0%, #8b5cf6 100%)',
   },

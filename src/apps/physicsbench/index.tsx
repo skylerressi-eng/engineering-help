@@ -1,9 +1,11 @@
 import { useEffect } from 'react';
 import {
-  Atom,
   MousePointer2,
   Circle,
   Square,
+  Triangle,
+  Pentagon,
+  Hexagon,
   Link2,
   Cable,
   Pin,
@@ -12,14 +14,17 @@ import {
   Pause,
   RotateCcw,
   ChevronDown,
+  Beaker,
 } from 'lucide-react';
+import { PhysicsIcon } from '@/apps/icons';
 import type { AppModule } from '@/os/types';
 import Renderer from './Renderer';
 import { usePhysicsBenchStore, type Tool } from '@/store/physicsBenchStore';
 import { useAppTools } from '@/hooks/useToolRegistry';
 import { publishAppState } from '@/ai/screenScanner';
-import { makeBody, makeCircle, makeBox, type Body } from '@/lib/physics2d/types';
+import { makeBody, makeCircle, makeBox, makeRegularPolygon, type Body } from '@/lib/physics2d/types';
 import { DEMOS, type DemoId } from '@/lib/physics2d/demos';
+import { MATERIALS, findMaterial } from '@/lib/physics2d/materials';
 import { useState } from 'react';
 
 function PhysicsBench({ appId }: { appId: string }) {
@@ -74,17 +79,19 @@ function PhysicsBench({ appId }: { appId: string }) {
     {
       toolName: 'spawn_body',
       description:
-        'Add a body (shape: "circle" or "box") at world coordinates. Params: radius (circle), halfW/halfH (box), mass, restitution, friction, isStatic. Returns the new body id. Coordinates are meters; +y points DOWN.',
+        'Add a body. shape ∈ {circle, box, polygon}. params: radius (circle), halfW/halfH (box), n + radius (polygon), mass OR material, restitution, friction, isStatic. Coordinates are meters; +y points DOWN.',
       input_schema: {
         type: 'object',
         properties: {
-          shape: { type: 'string', enum: ['circle', 'box'] },
+          shape: { type: 'string', enum: ['circle', 'box', 'polygon'] },
           x: { type: 'number' },
           y: { type: 'number' },
           radius: { type: 'number' },
           halfW: { type: 'number' },
           halfH: { type: 'number' },
+          n: { type: 'number', description: 'Number of sides for polygon (3-16)' },
           mass: { type: 'number' },
+          material: { type: 'string', description: 'Optional material id (overrides density/friction/restitution): steel, aluminum, wood, plastic, rubber, ice, glass, concrete, foam, bouncy' },
           restitution: { type: 'number' },
           friction: { type: 'number' },
           isStatic: { type: 'string', description: 'true to make a static body' },
@@ -92,23 +99,41 @@ function PhysicsBench({ appId }: { appId: string }) {
         },
         required: ['shape', 'x', 'y'],
       },
-      handler: ({ shape, x, y, radius, halfW, halfH, mass, restitution, friction, isStatic, color }: any) => {
+      handler: ({ shape, x, y, radius, halfW, halfH, n, mass, material, restitution, friction, isStatic, color }: any) => {
+        const mat = material ? findMaterial(String(material)) : undefined;
         const params: any = {
           pos: { x: Number(x), y: Number(y) },
           mass,
-          restitution,
-          friction,
+          density: mat?.density,
+          restitution: restitution ?? mat?.restitution,
+          friction: friction ?? mat?.friction,
           isStatic: String(isStatic) === 'true',
-          color,
+          color: color ?? mat?.color,
         };
         let body: Body;
         if (shape === 'circle') {
           body = makeBody(makeCircle(Number(radius ?? 0.4)), params);
+        } else if (shape === 'polygon') {
+          body = makeBody(makeRegularPolygon(Number(n ?? 5), Number(radius ?? 0.4)), params);
         } else {
           body = makeBody(makeBox(Number(halfW ?? 0.4), Number(halfH ?? 0.4)), params);
         }
         mutate((w) => w.add(body));
         return { id: body.id };
+      },
+    },
+    {
+      toolName: 'set_material',
+      description: 'Set the active material used for next spawned bodies. ids: steel, aluminum, wood, plastic, rubber, ice, glass, concrete, foam, bouncy.',
+      input_schema: {
+        type: 'object',
+        properties: { id: { type: 'string' } },
+        required: ['id'],
+      },
+      handler: ({ id }: any) => {
+        if (!findMaterial(String(id))) throw new Error('unknown material');
+        usePhysicsBenchStore.getState().setMaterial(String(id));
+        return { ok: true };
       },
     },
     {
@@ -244,6 +269,15 @@ function PhysicsBench({ appId }: { appId: string }) {
         <ToolBtn tool="box" current={tool} onClick={setTool}>
           <Square size={15} />
         </ToolBtn>
+        <ToolBtn tool="triangle" current={tool} onClick={setTool}>
+          <Triangle size={15} />
+        </ToolBtn>
+        <ToolBtn tool="pentagon" current={tool} onClick={setTool}>
+          <Pentagon size={15} />
+        </ToolBtn>
+        <ToolBtn tool="hexagon" current={tool} onClick={setTool}>
+          <Hexagon size={15} />
+        </ToolBtn>
         <div className="my-1 h-px w-6 bg-white/15" />
         <ToolBtn tool="rope" current={tool} onClick={setTool}>
           <Link2 size={15} />
@@ -305,6 +339,8 @@ function PhysicsBench({ appId }: { appId: string }) {
               </div>
             )}
           </div>
+          <MaterialPicker />
+          <SubstanceFootprint />
           <div className="ml-2 flex items-center gap-2 text-[11px] text-white/65">
             Time
             <input
@@ -440,6 +476,62 @@ function PhysicsBench({ appId }: { appId: string }) {
   );
 }
 
+function MaterialPicker() {
+  const current = usePhysicsBenchStore((s) => s.currentMaterial);
+  const set = usePhysicsBenchStore((s) => s.setMaterial);
+  const [open, setOpen] = useState(false);
+  const mat = findMaterial(current);
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="flex items-center gap-1 px-2 h-6 rounded-md text-xs hover:bg-white/10"
+        title="Material applied to next spawned body"
+      >
+        <Beaker size={12} />
+        <span
+          className="w-2 h-2 rounded-sm border border-white/20"
+          style={{ background: mat?.color ?? '#94a3b8' }}
+        />
+        {mat?.label ?? 'Material'} <ChevronDown size={11} />
+      </button>
+      {open && (
+        <div className="absolute top-full left-0 mt-1 glass-strong rounded-md min-w-[170px] py-1 z-30 shadow-window">
+          {MATERIALS.map((m) => (
+            <button
+              key={m.id}
+              onClick={() => {
+                set(m.id);
+                setOpen(false);
+              }}
+              className={`w-full text-left px-2 py-1 text-xs flex items-center gap-2 hover:bg-white/10 ${
+                m.id === current ? 'bg-white/10' : ''
+              }`}
+            >
+              <span className="w-3 h-3 rounded-sm border border-white/20" style={{ background: m.color }} />
+              <span className="flex-1">{m.label}</span>
+              <span className="font-mono text-[10px] text-white/45">ρ={m.density}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SubstanceFootprint() {
+  const current = usePhysicsBenchStore((s) => s.currentMaterial);
+  const mat = findMaterial(current);
+  if (!mat) return null;
+  return (
+    <div className="hidden md:flex items-center gap-2 ml-2 text-[10px] text-white/55 font-mono">
+      <span>ρ {mat.density}</span>
+      <span>e {mat.restitution}</span>
+      <span>μ {mat.friction}</span>
+    </div>
+  );
+}
+
 function ToolBtn({
   tool,
   current,
@@ -494,7 +586,7 @@ const module: AppModule = {
     id: 'physicsbench',
     name: 'PhysicsBench',
     description: 'Custom 2D rigid-body physics sandbox (no external libs)',
-    icon: Atom,
+    icon: PhysicsIcon,
     defaultSize: { width: 1000, height: 640 },
     accent: 'linear-gradient(135deg, #ec4899 0%, #f59e0b 100%)',
   },

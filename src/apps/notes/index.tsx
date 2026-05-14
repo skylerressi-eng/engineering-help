@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { StickyNote, Plus, Trash2, Eye, EyeOff, Download, Search } from 'lucide-react';
+import { Plus, Trash2, Eye, EyeOff, Download, Search } from 'lucide-react';
+import { NotesIcon } from '@/apps/icons';
 import type { AppModule } from '@/os/types';
 import { useNotesStore } from '@/store/notesStore';
 import { useAppTools } from '@/hooks/useToolRegistry';
@@ -248,7 +249,7 @@ const module: AppModule = {
     id: 'notes',
     name: 'Notes',
     description: 'Markdown notepad with LaTeX and code highlighting',
-    icon: StickyNote,
+    icon: NotesIcon,
     defaultSize: { width: 760, height: 540 },
     accent: 'linear-gradient(135deg, #f59e0b 0%, #ef4444 100%)',
   },
