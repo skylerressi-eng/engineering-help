@@ -8,6 +8,7 @@ import physicsbench from './physicsbench';
 import aerosim from './aerosim';
 import modeler3d from './modeler3d';
 import circuitsim from './circuitsim';
+import partslib from './partslib';
 
 export const APPS: Record<string, AppModule> = {
   [logiclab.manifest.id]: logiclab,
@@ -15,6 +16,7 @@ export const APPS: Record<string, AppModule> = {
   [physicsbench.manifest.id]: physicsbench,
   [aerosim.manifest.id]: aerosim,
   [modeler3d.manifest.id]: modeler3d,
+  [partslib.manifest.id]: partslib,
   [calculator.manifest.id]: calculator,
   [converter.manifest.id]: converter,
   [notes.manifest.id]: notes,
