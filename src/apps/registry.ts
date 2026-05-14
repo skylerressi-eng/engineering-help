@@ -4,9 +4,11 @@ import calculator from './calculator';
 import converter from './converter';
 import notes from './notes';
 import logiclab from './logiclab';
+import physicsbench from './physicsbench';
 
 export const APPS: Record<string, AppModule> = {
   [logiclab.manifest.id]: logiclab,
+  [physicsbench.manifest.id]: physicsbench,
   [calculator.manifest.id]: calculator,
   [converter.manifest.id]: converter,
   [notes.manifest.id]: notes,
