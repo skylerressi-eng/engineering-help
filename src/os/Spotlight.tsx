@@ -6,10 +6,38 @@ import { useWindowStore } from '@/store/windowStore';
 import { useAiStore } from '@/store/aiStore';
 import { APP_LIST } from '@/apps/registry';
 import { sendMessage } from '@/ai/conversation';
+import { tryEvaluate, formatNumber } from '@/lib/calc/evaluator';
+import { convert, findUnit } from '@/lib/units';
+import { Calculator as CalcIcon, Ruler } from 'lucide-react';
 
 type Result =
   | { kind: 'app'; id: string; name: string; description: string }
-  | { kind: 'ai'; query: string };
+  | { kind: 'ai'; query: string }
+  | { kind: 'math'; expr: string; result: string }
+  | { kind: 'unit'; expr: string; from: string; to: string; value: number; result: string };
+
+/** Inline "100 mph in m/s" parser. Returns null if it doesn't match. */
+function parseUnitConversion(q: string): Result | null {
+  const m = q.match(/^\s*(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)\s*([a-zA-Z°²³µ/·]+)\s+(?:in|to|as)\s+([a-zA-Z°²³µ/·]+)\s*$/);
+  if (!m) return null;
+  const value = parseFloat(m[1]);
+  const fromU = findUnit(m[2]);
+  const toU = findUnit(m[3]);
+  if (!fromU || !toU || fromU.category !== toU.category) return null;
+  try {
+    const v = convert(value, fromU.unit.id, toU.unit.id, fromU.category);
+    return {
+      kind: 'unit',
+      expr: q,
+      from: fromU.unit.label,
+      to: toU.unit.label,
+      value,
+      result: `${formatNumber(v, 6)} ${toU.unit.label}`,
+    };
+  } catch {
+    return null;
+  }
+}
 
 function fuzzyScore(needle: string, hay: string): number {
   needle = needle.toLowerCase();
@@ -68,7 +96,21 @@ export default function Spotlight() {
         name: x.app.manifest.name,
         description: x.app.manifest.description,
       }));
-    return [...scored, { kind: 'ai' as const, query: q }];
+
+    const out: Result[] = [];
+    // Unit conversion takes priority — recognizable as "<n> <unit> in <unit>"
+    const unitR = parseUnitConversion(q);
+    if (unitR) out.push(unitR);
+    // Math evaluation if the query contains a digit AND an operator/function-y character
+    if (!unitR && /\d/.test(q) && /[+\-*/().!^πepiqrtolgsincos]/.test(q.toLowerCase())) {
+      const mv = tryEvaluate(q);
+      if (mv !== null && Number.isFinite(mv)) {
+        out.push({ kind: 'math', expr: q, result: formatNumber(mv) });
+      }
+    }
+    out.push(...scored);
+    out.push({ kind: 'ai' as const, query: q });
+    return out;
   }, [q]);
 
   useEffect(() => {
@@ -80,6 +122,10 @@ export default function Spotlight() {
   const runResult = (r: Result) => {
     if (r.kind === 'app') {
       openApp(r.id, { title: APP_LIST.find((a) => a.manifest.id === r.id)?.manifest.name });
+    } else if (r.kind === 'math') {
+      navigator.clipboard?.writeText(r.result).catch(() => {});
+    } else if (r.kind === 'unit') {
+      navigator.clipboard?.writeText(r.result).catch(() => {});
     } else {
       newChat();
       openChat();
@@ -142,7 +188,15 @@ export default function Spotlight() {
               )}
               {results.map((r, i) => (
                 <button
-                  key={r.kind === 'app' ? `app-${r.id}` : `ai-${i}`}
+                  key={
+                    r.kind === 'app'
+                      ? `app-${r.id}`
+                      : r.kind === 'math'
+                        ? `math-${i}`
+                        : r.kind === 'unit'
+                          ? `unit-${i}`
+                          : `ai-${i}`
+                  }
                   onMouseEnter={() => setActive(i)}
                   onClick={() => runResult(r)}
                   className={`w-full flex items-center gap-3 px-4 py-2.5 text-left ${
@@ -151,6 +205,30 @@ export default function Spotlight() {
                 >
                   {r.kind === 'app' ? (
                     <AppResult id={r.id} name={r.name} description={r.description} />
+                  ) : r.kind === 'math' ? (
+                    <>
+                      <div className="w-8 h-8 rounded-md flex items-center justify-center bg-gradient-to-br from-sky-500 to-indigo-500">
+                        <CalcIcon size={16} className="text-white" />
+                      </div>
+                      <div className="flex-1">
+                        <div className="text-white text-[14px] font-mono">
+                          {r.expr} = <span className="text-accent">{r.result}</span>
+                        </div>
+                        <div className="text-white/50 text-xs">Enter to copy</div>
+                      </div>
+                    </>
+                  ) : r.kind === 'unit' ? (
+                    <>
+                      <div className="w-8 h-8 rounded-md flex items-center justify-center bg-gradient-to-br from-teal-500 to-cyan-500">
+                        <Ruler size={16} className="text-white" />
+                      </div>
+                      <div className="flex-1">
+                        <div className="text-white text-[14px] font-mono">
+                          {r.value} {r.from} = <span className="text-accent">{r.result}</span>
+                        </div>
+                        <div className="text-white/50 text-xs">Enter to copy</div>
+                      </div>
+                    </>
                   ) : (
                     <>
                       <div className="w-8 h-8 rounded-md flex items-center justify-center bg-gradient-to-br from-fuchsia-500 to-rose-500">

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useUIStore, WALLPAPERS } from '@/store/uiStore';
 import { useWindowStore } from '@/store/windowStore';
+import { useSettingsStore } from '@/store/settingsStore';
 
 interface ContextMenuState {
   x: number;
@@ -10,12 +11,17 @@ interface ContextMenuState {
 export default function Desktop({ children }: { children: React.ReactNode }) {
   const wallpaperId = useUIStore((s) => s.wallpaper);
   const setWallpaper = useUIStore((s) => s.setWallpaper);
+  const customWallpaper = useSettingsStore((s) => s.customWallpaper);
+  const setCustomWallpaper = useSettingsStore((s) => s.setCustomWallpaper);
   const [menu, setMenu] = useState<ContextMenuState | null>(null);
   const [submenu, setSubmenu] = useState<string | null>(null);
   const openApp = useWindowStore((s) => s.openApp);
   const menuRef = useRef<HTMLDivElement>(null);
 
   const wp = WALLPAPERS.find((w) => w.id === wallpaperId) ?? WALLPAPERS[0];
+  const backgroundImage = customWallpaper
+    ? `url("${customWallpaper}"), ${wp.css}`
+    : wp.css;
 
   useEffect(() => {
     const onClick = (e: MouseEvent) => {
@@ -41,8 +47,9 @@ export default function Desktop({ children }: { children: React.ReactNode }) {
       className="absolute inset-0 overflow-hidden"
       onContextMenu={onContextMenu}
       style={{
-        backgroundImage: wp.css,
+        backgroundImage,
         backgroundSize: 'cover',
+        backgroundPosition: 'center',
         backgroundColor: '#0b1020',
       }}
     >
@@ -83,6 +90,7 @@ export default function Desktop({ children }: { children: React.ReactNode }) {
                   key={w.id}
                   onClick={() => {
                     setWallpaper(w.id);
+                    setCustomWallpaper(null);
                     setMenu(null);
                     setSubmenu(null);
                   }}
@@ -93,7 +101,9 @@ export default function Desktop({ children }: { children: React.ReactNode }) {
                     style={{ backgroundImage: w.css, backgroundSize: 'cover' }}
                   />
                   {w.name}
-                  {w.id === wallpaperId && <span className="ml-auto text-accent">✓</span>}
+                  {!customWallpaper && w.id === wallpaperId && (
+                    <span className="ml-auto text-accent">✓</span>
+                  )}
                 </button>
               ))}
             </div>

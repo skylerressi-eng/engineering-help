@@ -9,6 +9,7 @@ import aerosim from './aerosim';
 import modeler3d from './modeler3d';
 import circuitsim from './circuitsim';
 import partslib from './partslib';
+import settings from './settings';
 
 export const APPS: Record<string, AppModule> = {
   [logiclab.manifest.id]: logiclab,
@@ -20,6 +21,7 @@ export const APPS: Record<string, AppModule> = {
   [calculator.manifest.id]: calculator,
   [converter.manifest.id]: converter,
   [notes.manifest.id]: notes,
+  [settings.manifest.id]: settings,
   [hello.manifest.id]: hello,
 };
 

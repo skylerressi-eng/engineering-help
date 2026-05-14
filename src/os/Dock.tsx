@@ -3,15 +3,17 @@ import { motion, useMotionValue, useTransform, useSpring, type MotionValue } fro
 import { Trash2 } from 'lucide-react';
 import { useWindowStore } from '@/store/windowStore';
 import { useUIStore } from '@/store/uiStore';
+import { useSettingsStore } from '@/store/settingsStore';
 import { APP_LIST } from '@/apps/registry';
 import type { AppManifest } from '@/os/types';
 
-const ICON_BASE = 52;
-const ICON_MAX = 78;
 const MAGNIFY_RADIUS = 110;
 
 export default function Dock() {
   const booted = useUIStore((s) => s.booted);
+  const dockSize = useSettingsStore((s) => s.dockSize);
+  const ICON_MAX = dockSize;
+  const ICON_BASE = Math.max(40, Math.round(dockSize * 0.67));
   const mouseX = useMotionValue<number | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -31,25 +33,37 @@ export default function Dock() {
         onMouseLeave={() => mouseX.set(null)}
         className="pointer-events-auto glass-strong glass-edge rounded-2xl px-3 flex items-end gap-2 shadow-window"
         style={{
-          height: 78,
+          height: ICON_MAX,
           paddingBottom: 6,
           paddingTop: 6,
           background: 'rgba(255,255,255,0.16)',
         }}
       >
         {APP_LIST.filter((a) => !a.manifest.hideFromDock).map((app, i) => (
-          <DockIcon key={app.manifest.id} app={app.manifest} mouseX={mouseX} index={i} />
+          <DockIcon
+            key={app.manifest.id}
+            app={app.manifest}
+            mouseX={mouseX}
+            index={i}
+            iconBase={ICON_BASE}
+            iconMax={ICON_MAX}
+          />
         ))}
 
         <div className="w-px h-12 bg-white/15 mx-1 self-center" />
 
-        <TrashIcon mouseX={mouseX} />
+        <TrashIcon mouseX={mouseX} iconBase={ICON_BASE} iconMax={ICON_MAX} />
       </div>
     </motion.div>
   );
 }
 
-function useIconSize(mouseX: MotionValue<number | null>, ref: React.RefObject<HTMLDivElement>) {
+function useIconSize(
+  mouseX: MotionValue<number | null>,
+  ref: React.RefObject<HTMLDivElement>,
+  iconBase: number,
+  iconMax: number,
+) {
   // Compute distance-based size. Re-derived each frame via useTransform on the parent's mouseX.
   const distance = useTransform(mouseX, (mx) => {
     if (mx === null || !ref.current) return MAGNIFY_RADIUS * 2;
@@ -59,7 +73,7 @@ function useIconSize(mouseX: MotionValue<number | null>, ref: React.RefObject<HT
     const center = ir.left - pr.left + ir.width / 2;
     return Math.abs(mx - center);
   });
-  const sizeRaw = useTransform(distance, [0, MAGNIFY_RADIUS], [ICON_MAX, ICON_BASE], {
+  const sizeRaw = useTransform(distance, [0, MAGNIFY_RADIUS], [iconMax, iconBase], {
     clamp: true,
   });
   return useSpring(sizeRaw, { stiffness: 320, damping: 26, mass: 0.4 });
@@ -68,13 +82,17 @@ function useIconSize(mouseX: MotionValue<number | null>, ref: React.RefObject<HT
 function DockIcon({
   app,
   mouseX,
+  iconBase,
+  iconMax,
 }: {
   app: AppManifest;
   mouseX: MotionValue<number | null>;
   index: number;
+  iconBase: number;
+  iconMax: number;
 }) {
   const ref = useRef<HTMLDivElement>(null);
-  const size = useIconSize(mouseX, ref);
+  const size = useIconSize(mouseX, ref, iconBase, iconMax);
   const openApp = useWindowStore((s) => s.openApp);
   const windows = useWindowStore((s) => s.windows);
   const focusWindow = useWindowStore((s) => s.focusWindow);
@@ -111,7 +129,7 @@ function DockIcon({
     <div
       ref={ref}
       className="relative flex flex-col items-center justify-end"
-      style={{ width: ICON_MAX, height: ICON_MAX }}
+      style={{ width: iconMax, height: iconMax }}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
     >
@@ -135,7 +153,7 @@ function DockIcon({
               app.accent ?? 'linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%)',
           }}
         />
-        <Icon className="text-white drop-shadow relative z-10" size={Math.max(20, ICON_BASE * 0.5)} />
+        <Icon className="text-white drop-shadow relative z-10" size={Math.max(20, iconBase * 0.5)} />
       </motion.button>
       {/* running indicator */}
       <div
@@ -147,14 +165,22 @@ function DockIcon({
   );
 }
 
-function TrashIcon({ mouseX }: { mouseX: MotionValue<number | null> }) {
+function TrashIcon({
+  mouseX,
+  iconBase,
+  iconMax,
+}: {
+  mouseX: MotionValue<number | null>;
+  iconBase: number;
+  iconMax: number;
+}) {
   const ref = useRef<HTMLDivElement>(null);
-  const size = useIconSize(mouseX, ref);
+  const size = useIconSize(mouseX, ref, iconBase, iconMax);
   return (
     <div
       ref={ref}
       className="relative flex flex-col items-center justify-end"
-      style={{ width: ICON_MAX, height: ICON_MAX }}
+      style={{ width: iconMax, height: iconMax }}
     >
       <motion.button
         style={{ width: size, height: size }}
@@ -162,7 +188,7 @@ function TrashIcon({ mouseX }: { mouseX: MotionValue<number | null> }) {
         className="rounded-xl flex items-center justify-center bg-white/10 border border-white/15 backdrop-blur-md"
         title="Trash"
       >
-        <Trash2 className="text-white/85" size={Math.max(20, ICON_BASE * 0.45)} />
+        <Trash2 className="text-white/85" size={Math.max(20, iconBase * 0.45)} />
       </motion.button>
     </div>
   );
