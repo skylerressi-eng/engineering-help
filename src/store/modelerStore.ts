@@ -40,6 +40,12 @@ interface ModelerStore {
   rev: number;
 
   addPrimitive: (type: PrimitiveType, params?: PrimitiveParams) => string;
+  /** Drop a custom-geometry object (e.g. a PartsLib procedural part) into the scene */
+  addCustomObject: (
+    name: string,
+    geometry: THREE.BufferGeometry,
+    options?: Partial<Pick<SceneObject, 'color' | 'position' | 'rotation' | 'scale'>>,
+  ) => string;
   select: (id: string | null) => void;
   setTransformMode: (m: TransformMode) => void;
   setEditMode: (m: EditMode) => void;
@@ -102,6 +108,12 @@ export const useModelerStore = create<ModelerStore>((set, get) => ({
       primitiveType: type,
       primitiveParams: params,
     });
+    set((s) => ({ objects: [...s.objects, obj], selectedId: obj.id, rev: s.rev + 1 }));
+    return obj.id;
+  },
+
+  addCustomObject: (name, geometry, options = {}) => {
+    const obj = makeObject(name, geometry, 'primitive', options);
     set((s) => ({ objects: [...s.objects, obj], selectedId: obj.id, rev: s.rev + 1 }));
     return obj.id;
   },

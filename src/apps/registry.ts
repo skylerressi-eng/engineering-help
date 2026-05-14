@@ -10,6 +10,7 @@ import modeler3d from './modeler3d';
 import circuitsim from './circuitsim';
 import partslib from './partslib';
 import settings from './settings';
+import conway from './conway';
 
 export const APPS: Record<string, AppModule> = {
   [logiclab.manifest.id]: logiclab,
@@ -18,6 +19,7 @@ export const APPS: Record<string, AppModule> = {
   [aerosim.manifest.id]: aerosim,
   [modeler3d.manifest.id]: modeler3d,
   [partslib.manifest.id]: partslib,
+  [conway.manifest.id]: conway,
   [calculator.manifest.id]: calculator,
   [converter.manifest.id]: converter,
   [notes.manifest.id]: notes,

@@ -3,6 +3,7 @@ import { Wifi, Battery, Search, Sparkles } from 'lucide-react';
 import { useWindowStore } from '@/store/windowStore';
 import { useUIStore } from '@/store/uiStore';
 import { useAiStore } from '@/store/aiStore';
+import { useSettingsStore } from '@/store/settingsStore';
 import { getApp } from '@/apps/registry';
 import { EngOSMark } from './BootScreen';
 
@@ -34,6 +35,7 @@ export default function MenuBar() {
   const windows = useWindowStore((s) => s.windows);
   const toggleSpotlight = useUIStore((s) => s.toggleSpotlight);
   const toggleChat = useAiStore((s) => s.toggleChat);
+  const menuBarOpacity = useSettingsStore((s) => s.menuBarOpacity);
   const now = useNow();
   const batt = useFakeBattery();
   const [logoOpen, setLogoOpen] = useState(false);
@@ -62,7 +64,7 @@ export default function MenuBar() {
 
   return (
     <div className="fixed top-0 left-0 right-0 h-7 z-[4000] flex items-center px-3 text-[13px] text-white/90 chrome glass glass-edge"
-      style={{ background: 'rgba(0,0,0,0.18)' }}
+      style={{ background: `rgba(0,0,0,${(menuBarOpacity / 100).toFixed(3)})` }}
     >
       {/* Left section */}
       <div className="flex items-center gap-3">

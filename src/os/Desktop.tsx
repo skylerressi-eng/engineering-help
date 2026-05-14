@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useUIStore, WALLPAPERS } from '@/store/uiStore';
 import { useWindowStore } from '@/store/windowStore';
 import { useSettingsStore } from '@/store/settingsStore';
+import ConwayWallpaper from './ConwayWallpaper';
 
 interface ContextMenuState {
   x: number;
@@ -53,6 +54,9 @@ export default function Desktop({ children }: { children: React.ReactNode }) {
         backgroundColor: '#0b1020',
       }}
     >
+      {/* Live wallpaper canvas (Conway) — sits beneath the right-click capture */}
+      {wp.live && !customWallpaper && <ConwayWallpaper />}
+
       {/* The background layer that captures right-clicks for the desktop menu */}
       <div data-desktop-bg="true" className="absolute inset-0" />
 

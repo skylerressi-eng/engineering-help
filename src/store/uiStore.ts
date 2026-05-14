@@ -1,12 +1,14 @@
 import { create } from 'zustand';
 
-export type WallpaperId = 'aurora' | 'sunset' | 'oceanic' | 'forest' | 'cosmic';
+export type WallpaperId = 'aurora' | 'sunset' | 'oceanic' | 'forest' | 'cosmic' | 'conway';
 
 export interface WallpaperPreset {
   id: WallpaperId;
   name: string;
   /** CSS background-image value (uses linear/radial gradients) */
   css: string;
+  /** Whether this wallpaper is rendered by a live canvas (Conway) instead of CSS */
+  live?: boolean;
 }
 
 export const WALLPAPERS: WallpaperPreset[] = [
@@ -50,6 +52,13 @@ export const WALLPAPERS: WallpaperPreset[] = [
           radial-gradient(at 85% 25%, #db2777 0px, transparent 55%),
           radial-gradient(at 50% 85%, #2563eb 0px, transparent 55%),
           linear-gradient(135deg, #0c0a1e 0%, #1e1b4b 55%, #0c0a1e 100%)`,
+  },
+  {
+    id: 'conway',
+    name: "Conway's Life",
+    live: true,
+    // Fallback CSS shown briefly while the live canvas mounts.
+    css: `linear-gradient(180deg, #0f172a 0%, #020617 100%)`,
   },
 ];
 

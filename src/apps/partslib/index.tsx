@@ -62,18 +62,7 @@ function PartsLib({ appId }: { appId: string }) {
 
   const sendToModeler = () => {
     if (!geometry || !selected) return;
-    const id = useModelerStore.getState().addPrimitive('box');
-    // Replace the just-spawned object's geometry with our procedural part
-    const objs = useModelerStore.getState().objects;
-    const obj = objs.find((o) => o.id === id);
-    if (obj) {
-      obj.geometry = geometry.clone();
-      obj.name = selected.name;
-    }
-    useModelerStore.setState({
-      rev: useModelerStore.getState().rev + 1,
-    });
-    // Open Modeler3D so the user can see the imported part
+    useModelerStore.getState().addCustomObject(selected.name, geometry.clone());
     useWindowStore.getState().openApp('modeler3d', { title: 'Modeler3D' });
   };
 
@@ -142,13 +131,7 @@ function PartsLib({ appId }: { appId: string }) {
         if (!p) throw new Error(`Unknown part: ${partId}`);
         const merged = { ...defaultParams(p), ...(pset ?? {}) };
         const geom = p.build(merged);
-        const oid = useModelerStore.getState().addPrimitive('box');
-        const obj = useModelerStore.getState().objects.find((o) => o.id === oid);
-        if (obj) {
-          obj.geometry = geom;
-          obj.name = p.name;
-        }
-        useModelerStore.setState({ rev: useModelerStore.getState().rev + 1 });
+        const oid = useModelerStore.getState().addCustomObject(p.name, geom);
         useWindowStore.getState().openApp('modeler3d', { title: 'Modeler3D' });
         return { id: oid };
       },

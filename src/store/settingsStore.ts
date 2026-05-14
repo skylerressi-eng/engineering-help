@@ -142,6 +142,9 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       historyEnabled: true,
       bindings: DEFAULT_BINDINGS,
     });
+    useUIStore.getState().setWallpaper('aurora');
+    document.documentElement.classList.add('dark');
+    document.documentElement.classList.remove('light');
   },
 }));
 

@@ -49,6 +49,13 @@ export default function App() {
   useKeyboardShortcut({ key: ' ', meta: true }, useCallback(() => toggleSpotlight(), [toggleSpotlight]));
   useKeyboardShortcut({ key: 'i', meta: true }, useCallback(() => toggleChat(), [toggleChat]));
   useKeyboardShortcut({ key: 'Escape' }, useCallback(() => closeSpotlight(), [closeSpotlight]));
+  useKeyboardShortcut(
+    { key: 'w', meta: true },
+    useCallback(() => {
+      const { focusedId, closeWindow } = useWindowStore.getState();
+      if (focusedId) closeWindow(focusedId);
+    }, []),
+  );
 
   return (
     <div className="fixed inset-0 overflow-hidden">
