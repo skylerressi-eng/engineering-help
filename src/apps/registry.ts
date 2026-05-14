@@ -6,11 +6,13 @@ import notes from './notes';
 import logiclab from './logiclab';
 import physicsbench from './physicsbench';
 import aerosim from './aerosim';
+import modeler3d from './modeler3d';
 
 export const APPS: Record<string, AppModule> = {
   [logiclab.manifest.id]: logiclab,
   [physicsbench.manifest.id]: physicsbench,
   [aerosim.manifest.id]: aerosim,
+  [modeler3d.manifest.id]: modeler3d,
   [calculator.manifest.id]: calculator,
   [converter.manifest.id]: converter,
   [notes.manifest.id]: notes,
