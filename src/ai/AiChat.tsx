@@ -297,18 +297,32 @@ function MessageList({ messages }: { messages: AiMessage[] }) {
 
 function EmptyState({ toolCount }: { toolCount: number }) {
   return (
-    <div className="text-center py-8 text-white/65">
-      <div className="w-12 h-12 mx-auto rounded-xl flex items-center justify-center bg-gradient-to-br from-fuchsia-500 to-rose-500 shadow-lg">
-        <Sparkles size={20} className="text-white" />
+    <div className="text-center py-6 text-white/65 px-2">
+      <div
+        className="w-14 h-14 mx-auto flex items-center justify-center shadow-lg border border-white/15 relative overflow-hidden"
+        style={{
+          borderRadius: '26%',
+          background: 'linear-gradient(135deg, #f0abfc 0%, #c084fc 35%, #ec4899 100%)',
+        }}
+      >
+        <div
+          className="absolute inset-x-0 top-0 h-1/2 pointer-events-none"
+          style={{
+            background:
+              'linear-gradient(180deg, rgba(255,255,255,0.32) 0%, rgba(255,255,255,0) 100%)',
+          }}
+        />
+        <Sparkles size={22} className="text-white relative z-10" />
       </div>
-      <div className="mt-3 text-base font-semibold text-white/85">EngOS AI</div>
-      <div className="text-[12px] mt-1">
-        Ask anything about your engineering work.
+      <div className="mt-3 text-base font-semibold text-white">EngOS AI</div>
+      <div className="text-[12px] mt-0.5 text-white/55">
+        Your engineering co-pilot.
       </div>
-      <div className="text-[11px] mt-2 text-white/40">
-        {toolCount} tool{toolCount === 1 ? '' : 's'} available
+      <div className="inline-flex items-center gap-1 mt-2 px-2 py-0.5 rounded-full bg-white/8 border border-white/10 text-[10px] text-white/65 font-mono">
+        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_4px_rgba(74,222,128,0.6)]" />
+        {toolCount} tool{toolCount === 1 ? '' : 's'} live
       </div>
-      <div className="mt-4 grid grid-cols-2 gap-2 px-2 text-left">
+      <div className="mt-5 grid grid-cols-2 gap-2 text-left">
         <QuickActionTile
           icon={<ScanLine size={13} />}
           title="Explain this"
@@ -319,14 +333,17 @@ function EmptyState({ toolCount }: { toolCount: number }) {
         />
         <QuickActionTile
           icon={<Wand2 size={13} />}
-          title="Generate"
-          subtitle="Build something for me"
+          title="Build for me"
+          subtitle="Pick a fun demo"
           onClick={() =>
             sendMessage({
-              text: 'Suggest something cool you can build for me right now using the tools you have.',
+              text: 'Pick something cool to build using the tools you have right now and walk me through it as you do it.',
             })
           }
         />
+      </div>
+      <div className="mt-3 text-[10px] text-white/40">
+        Cmd+I to toggle · Cmd+K for Spotlight
       </div>
     </div>
   );
@@ -463,7 +480,11 @@ function ChatInput({ pending }: { pending: boolean }) {
 
   return (
     <div className="border-t border-white/10 p-2">
-      <div className="flex items-end gap-2 rounded-xl bg-white/5 border border-white/10 px-2.5 py-2">
+      <div
+        className={`flex items-end gap-2 rounded-xl bg-white/5 border px-2.5 py-2 transition-colors ${
+          value.trim() ? 'border-accent/40' : 'border-white/10 hover:border-white/20'
+        }`}
+      >
         <button
           title="Scan focused app"
           onClick={() => submit(true)}

@@ -125,7 +125,9 @@ export default function Desktop({ children }: { children: React.ReactNode }) {
             label="About EngOS"
             onClick={() => {
               setMenu(null);
-              alert('EngOS v0.1\nA macOS-style desktop for engineering students.');
+              import('@/store/toastStore').then(({ toast }) =>
+                toast.info('EngOS', 'A macOS-style desktop for engineering students.'),
+              );
             }}
           />
         </div>

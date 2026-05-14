@@ -37,6 +37,19 @@ export default function BootScreen() {
         >
           ENG OS
         </motion.div>
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.6, duration: 0.4 }}
+          className="mt-6 w-44 h-1 rounded-full bg-white/8 overflow-hidden"
+        >
+          <motion.div
+            initial={{ width: '0%' }}
+            animate={{ width: '100%' }}
+            transition={{ delay: 0.6, duration: 0.9, ease: 'easeOut' }}
+            className="h-full bg-white/70 rounded-full"
+          />
+        </motion.div>
       </motion.div>
     </motion.div>
   );

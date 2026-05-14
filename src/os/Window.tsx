@@ -149,8 +149,14 @@ function TrafficLight({
         e.stopPropagation();
         onClick();
       }}
-      className="w-3 h-3 rounded-full flex items-center justify-center text-[8px] font-bold text-black/65 leading-none transition-colors"
-      style={{ background: bg }}
+      className="w-3 h-3 rounded-full flex items-center justify-center text-[9px] font-bold text-black/70 leading-none transition-all hover:scale-110 active:scale-95"
+      style={{
+        background: bg,
+        boxShadow:
+          focused || hover
+            ? `inset 0 0.5px 0 rgba(255,255,255,0.4), inset 0 -0.5px 0 rgba(0,0,0,0.25)`
+            : 'none',
+      }}
       tabIndex={-1}
     >
       <span className={hover ? 'opacity-90' : 'opacity-0'}>{symbol}</span>

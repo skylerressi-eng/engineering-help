@@ -212,8 +212,13 @@ function CircuitSim({ appId }: { appId: string }) {
             onClick={() => {
               try {
                 runDC();
+                import('@/store/toastStore').then(({ toast }) =>
+                  toast.success('DC operating point', 'Solved.'),
+                );
               } catch (e) {
-                alert('DC solve failed: ' + (e as Error).message);
+                import('@/store/toastStore').then(({ toast }) =>
+                  toast.error('DC solve failed', (e as Error).message),
+                );
               }
             }}
             className="flex items-center gap-1 px-2 h-6 rounded-md text-xs bg-accent hover:bg-accent-hover text-white"
@@ -224,8 +229,13 @@ function CircuitSim({ appId }: { appId: string }) {
             onClick={() => {
               try {
                 runTransient();
+                import('@/store/toastStore').then(({ toast }) =>
+                  toast.success('Transient analysis', 'Done.'),
+                );
               } catch (e) {
-                alert('Transient failed: ' + (e as Error).message);
+                import('@/store/toastStore').then(({ toast }) =>
+                  toast.error('Transient failed', (e as Error).message),
+                );
               }
             }}
             className="flex items-center gap-1 px-2 h-6 rounded-md text-xs hover:bg-white/10"

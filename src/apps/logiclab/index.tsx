@@ -64,7 +64,8 @@ function LogicLab({ appId }: { appId: string }) {
       const parsed = JSON.parse(text) as Circuit;
       load(parsed);
     } catch (err) {
-      alert(`Failed to load: ${(err as Error).message}`);
+      const { toast } = await import('@/store/toastStore');
+      toast.error('Failed to load circuit', (err as Error).message);
     } finally {
       e.target.value = '';
     }
@@ -253,6 +254,25 @@ function LogicLab({ appId }: { appId: string }) {
         <div className="mx-1 w-px h-4 bg-white/15" />
         <ToolbarButton onClick={() => setShowTable(true)} title="Truth Table">
           <Table2 size={13} /> Truth Table
+        </ToolbarButton>
+        <ToolbarButton
+          onClick={() => {
+            const s = useLogicLabStore.getState();
+            if (!s.components.length) return;
+            // Compute bounds, fit viewport
+            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+            for (const c of s.components) {
+              if (c.x < minX) minX = c.x;
+              if (c.y < minY) minY = c.y;
+              if (c.x > maxX) maxX = c.x;
+              if (c.y > maxY) maxY = c.y;
+            }
+            const pad = 80;
+            s.setViewport({ x: minX - pad, y: minY - pad });
+          }}
+          title="Center on circuit"
+        >
+          ⌂ Center
         </ToolbarButton>
         <div className="mx-1 w-px h-4 bg-white/15" />
         <div className="relative">

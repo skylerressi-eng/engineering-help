@@ -210,12 +210,21 @@ function NotesApp({ appId }: { appId: string }) {
             )}
           </>
         ) : (
-          <div className="flex-1 flex items-center justify-center text-white/55">
+          <div className="flex-1 flex flex-col items-center justify-center text-center px-6 gap-3">
+            <div className="w-14 h-14 rounded-2xl flex items-center justify-center bg-gradient-to-br from-amber-400 to-rose-500 shadow-lg">
+              <Plus size={26} className="text-white" />
+            </div>
+            <div>
+              <div className="text-white text-base font-semibold">No note open</div>
+              <div className="text-white/55 text-xs mt-0.5">
+                Markdown + LaTeX. Auto-saved to this browser.
+              </div>
+            </div>
             <button
               onClick={() => createNote()}
-              className="px-3 py-1.5 rounded-md bg-accent hover:bg-accent-hover text-white text-sm"
+              className="px-3 py-1.5 rounded-lg bg-accent hover:bg-accent-hover text-white text-sm font-medium shadow"
             >
-              + New note
+              New note
             </button>
           </div>
         )}

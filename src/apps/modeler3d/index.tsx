@@ -301,7 +301,11 @@ function Modeler3D({ appId }: { appId: string }) {
             const json = typeof result === 'string' ? result : JSON.stringify(result);
             downloadBlob('model.gltf', json, 'model/gltf+json');
           },
-          (err) => alert('GLTF export failed: ' + err.message),
+          (err) => {
+            import('@/store/toastStore').then(({ toast }) =>
+              toast.error('GLTF export failed', err.message),
+            );
+          },
           { binary: false },
         );
       });

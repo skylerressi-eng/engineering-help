@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import { Wifi, Battery, Search, Sparkles } from 'lucide-react';
+import { Wifi, Battery, Search, Sparkles, Bluetooth, MoonStar, Moon, Sun } from 'lucide-react';
 import { useWindowStore } from '@/store/windowStore';
-import { useUIStore } from '@/store/uiStore';
+import { useUIStore, WALLPAPERS } from '@/store/uiStore';
 import { useAiStore } from '@/store/aiStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { getApp } from '@/apps/registry';
@@ -78,7 +78,13 @@ export default function MenuBar() {
           {logoOpen && (
             <div className="absolute top-full left-0 mt-1 glass-strong glass-edge rounded-lg py-1 min-w-[180px] shadow-window">
               {[
-                { label: 'About EngOS', action: () => alert('EngOS v0.1') },
+                {
+                  label: 'About EngOS',
+                  action: () =>
+                    import('@/store/toastStore').then(({ toast }) =>
+                      toast.info('EngOS', 'Built for engineers. v1.0.0'),
+                    ),
+                },
                 'sep',
                 { label: 'Sleep', action: () => {} },
                 { label: 'Restart', action: () => location.reload() },
@@ -111,22 +117,18 @@ export default function MenuBar() {
       </div>
 
       {/* Right section */}
-      <div className="ml-auto flex items-center gap-3">
+      <div className="ml-auto flex items-center gap-2.5">
         <button
           title="EngOS AI (Cmd+I)"
           onClick={toggleChat}
-          className="flex items-center gap-1 hover:bg-white/15 rounded px-1"
+          className="flex items-center gap-1 hover:bg-white/15 rounded px-1 transition-colors"
         >
           <Sparkles size={14} className="text-pink-300" />
         </button>
-        <div className="flex items-center gap-1 opacity-90" title={`Battery ${batt}%`}>
-          <span className="text-[11px] tabular-nums">{batt}%</span>
-          <Battery size={16} />
-        </div>
-        <Wifi size={14} className="opacity-90" />
+        <ControlCenterButton batt={batt} />
         <button
           onClick={toggleSpotlight}
-          className="hover:bg-white/15 rounded px-1"
+          className="hover:bg-white/15 rounded px-1 transition-colors"
           title="Spotlight (Cmd+K)"
         >
           <Search size={14} />
@@ -137,5 +139,166 @@ export default function MenuBar() {
         </div>
       </div>
     </div>
+  );
+}
+
+function ControlCenterButton({ batt }: { batt: number }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const onDown = (e: MouseEvent) => {
+      if (open && ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    window.addEventListener('mousedown', onDown);
+    return () => window.removeEventListener('mousedown', onDown);
+  }, [open]);
+  return (
+    <div ref={ref} className="relative">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        title="Control Center"
+        className="flex items-center gap-1.5 px-1.5 py-0.5 rounded hover:bg-white/15 transition-colors"
+      >
+        <Wifi size={13} className="opacity-95" />
+        <Battery size={15} className="opacity-95" />
+        <span className="text-[11px] tabular-nums opacity-90">{batt}%</span>
+      </button>
+      {open && <ControlCenter batt={batt} onClose={() => setOpen(false)} />}
+    </div>
+  );
+}
+
+function ControlCenter({ batt }: { batt: number; onClose: () => void }) {
+  const dockSize = useSettingsStore((s) => s.dockSize);
+  const setDockSize = useSettingsStore((s) => s.setDockSize);
+  const theme = useSettingsStore((s) => s.theme);
+  const setTheme = useSettingsStore((s) => s.setTheme);
+  const wallpaper = useUIStore((s) => s.wallpaper);
+  const setWallpaper = useUIStore((s) => s.setWallpaper);
+  const wallpapers = ['aurora', 'sunset', 'oceanic', 'forest', 'cosmic', 'conway'] as const;
+  const [wifiOn, setWifiOn] = useState(true);
+  const [btOn, setBtOn] = useState(true);
+  const [doNotDisturb, setDND] = useState(false);
+  return (
+    <div
+      className="absolute right-0 top-full mt-1.5 w-[300px] glass-strong rounded-2xl shadow-window p-3 z-[5000] border border-white/10"
+      style={{
+        background: 'rgba(28, 28, 36, 0.85)',
+        backdropFilter: 'blur(36px) saturate(180%)',
+      }}
+    >
+      <div className="grid grid-cols-2 gap-2">
+        <Tile
+          active={wifiOn}
+          onClick={() => setWifiOn((v) => !v)}
+          icon={<Wifi size={15} />}
+          title="Wi-Fi"
+          subtitle={wifiOn ? 'EngOS Lab' : 'Off'}
+        />
+        <Tile
+          active={btOn}
+          onClick={() => setBtOn((v) => !v)}
+          icon={<Bluetooth size={15} />}
+          title="Bluetooth"
+          subtitle={btOn ? 'On' : 'Off'}
+        />
+        <Tile
+          active={doNotDisturb}
+          onClick={() => setDND((v) => !v)}
+          icon={<MoonStar size={15} />}
+          title="Focus"
+          subtitle={doNotDisturb ? 'Do Not Disturb' : 'Off'}
+        />
+        <Tile
+          active={theme === 'dark'}
+          onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+          icon={theme === 'dark' ? <Moon size={15} /> : <Sun size={15} />}
+          title="Appearance"
+          subtitle={theme === 'dark' ? 'Dark' : 'Light'}
+        />
+      </div>
+
+      <div className="mt-3 rounded-xl bg-white/5 p-2.5 space-y-2">
+        <div className="flex items-center gap-2 text-[11px] text-white/65">
+          <Battery size={13} />
+          <span>Battery</span>
+          <span className="ml-auto font-mono">{batt}%</span>
+        </div>
+        <div className="h-1.5 rounded-full bg-white/10 overflow-hidden">
+          <div
+            className="h-full rounded-full bg-emerald-400"
+            style={{ width: `${batt}%` }}
+          />
+        </div>
+      </div>
+
+      <div className="mt-3 rounded-xl bg-white/5 p-2.5">
+        <div className="text-[11px] text-white/65 mb-1.5">Dock Size</div>
+        <input
+          type="range"
+          min={56}
+          max={110}
+          step={2}
+          value={dockSize}
+          onChange={(e) => setDockSize(parseInt(e.target.value))}
+          className="w-full"
+        />
+      </div>
+
+      <div className="mt-3 rounded-xl bg-white/5 p-2.5">
+        <div className="text-[11px] text-white/65 mb-1.5">Wallpaper</div>
+        <div className="grid grid-cols-6 gap-1.5">
+          {wallpapers.map((id) => {
+            const wp = WALLPAPERS.find((w) => w.id === id)!;
+            return (
+              <button
+                key={id}
+                onClick={() => setWallpaper(id)}
+                className={`h-9 rounded-md border ${
+                  wallpaper === id ? 'border-white' : 'border-white/15 hover:border-white/40'
+                }`}
+                style={{ backgroundImage: wp.css, backgroundSize: 'cover' }}
+                title={wp.name}
+              />
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Tile({
+  active,
+  onClick,
+  icon,
+  title,
+  subtitle,
+}: {
+  active: boolean;
+  onClick: () => void;
+  icon: React.ReactNode;
+  title: string;
+  subtitle: string;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`flex items-center gap-2.5 rounded-xl px-2.5 py-2 text-left transition-colors ${
+        active ? 'bg-accent/30 hover:bg-accent/40' : 'bg-white/5 hover:bg-white/10'
+      }`}
+    >
+      <div
+        className={`w-7 h-7 rounded-full flex items-center justify-center ${
+          active ? 'bg-accent text-white' : 'bg-white/10 text-white/85'
+        }`}
+      >
+        {icon}
+      </div>
+      <div className="min-w-0">
+        <div className="text-[11px] font-medium text-white truncate">{title}</div>
+        <div className="text-[10px] text-white/55 truncate">{subtitle}</div>
+      </div>
+    </button>
   );
 }

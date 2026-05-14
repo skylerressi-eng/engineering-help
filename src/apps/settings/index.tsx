@@ -2,7 +2,7 @@ import { useState, useRef } from 'react';
 import { Sliders, Palette, Sparkles, Keyboard, Info, RotateCcw, Upload } from 'lucide-react';
 import { SettingsIcon } from '@/apps/icons';
 import type { AppModule } from '@/os/types';
-import { useSettingsStore } from '@/store/settingsStore';
+import { useSettingsStore, ACCENT_PRESETS } from '@/store/settingsStore';
 import { useUIStore, WALLPAPERS } from '@/store/uiStore';
 import { useAiStore } from '@/store/aiStore';
 import { APP_LIST } from '@/apps/registry';
@@ -83,7 +83,15 @@ function GeneralPane() {
 
       <button
         onClick={() => {
-          if (confirm('Reset all settings to defaults?')) reset();
+          import('@/store/toastStore').then(({ useToastStore }) =>
+            useToastStore.getState().push({
+              kind: 'warn',
+              title: 'Reset all settings?',
+              body: 'Wallpaper, theme, dock size, and shortcuts will return to defaults.',
+              duration: 0,
+              action: { label: 'Reset', onClick: reset },
+            }),
+          );
         }}
         className="flex items-center gap-1 px-2 py-1 rounded-md bg-traffic-red/20 hover:bg-traffic-red/40 text-traffic-red text-sm"
       >
@@ -135,6 +143,10 @@ function AppearancePane() {
             </button>
           ))}
         </div>
+      </Row>
+
+      <Row label="Accent">
+        <AccentPicker />
       </Row>
 
       <div>
@@ -241,7 +253,15 @@ function AIPane() {
       </Row>
       <button
         onClick={() => {
-          if (confirm('Delete all stored conversations?')) clearHistory();
+          import('@/store/toastStore').then(({ useToastStore }) =>
+            useToastStore.getState().push({
+              kind: 'warn',
+              title: 'Clear AI conversation history?',
+              body: 'All saved chats will be deleted from this browser.',
+              duration: 0,
+              action: { label: 'Delete', onClick: clearHistory },
+            }),
+          );
         }}
         className="px-2 py-1 rounded-md bg-traffic-red/20 hover:bg-traffic-red/40 text-traffic-red text-sm"
       >
@@ -291,6 +311,35 @@ function AboutPane() {
           and a fistful of hand-written numerical kernels.
         </div>
       </div>
+    </div>
+  );
+}
+
+function AccentPicker() {
+  const accent = useSettingsStore((s) => s.accent);
+  const setAccent = useSettingsStore((s) => s.setAccent);
+  return (
+    <div className="flex flex-wrap gap-1.5 items-center">
+      {ACCENT_PRESETS.map((a) => (
+        <button
+          key={a.id}
+          onClick={() => setAccent(a.hex)}
+          title={a.label}
+          className={`w-7 h-7 rounded-full border-2 transition-all ${
+            accent === a.hex
+              ? 'border-white shadow-[0_0_0_2px_rgba(255,255,255,0.25)]'
+              : 'border-white/15 hover:border-white/40'
+          }`}
+          style={{ background: a.hex }}
+        />
+      ))}
+      <input
+        type="color"
+        value={accent}
+        onChange={(e) => setAccent(e.target.value)}
+        className="w-7 h-7 rounded-full bg-transparent border border-white/15 cursor-pointer ml-1"
+        title="Custom"
+      />
     </div>
   );
 }

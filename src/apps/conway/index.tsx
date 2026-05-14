@@ -324,13 +324,26 @@ function ConwayApp({ appId }: { appId: string }) {
             <input
               type="range"
               min={1}
-              max={30}
+              max={60}
               step={1}
               value={tickHz}
               onChange={(e) => setTickHz(parseInt(e.target.value))}
               className="w-24"
             />
             <span className="font-mono w-6 text-right">{tickHz}</span>
+            <div className="flex gap-0.5 ml-1">
+              {[2, 8, 30].map((hz) => (
+                <button
+                  key={hz}
+                  onClick={() => setTickHz(hz)}
+                  className={`px-1.5 py-0.5 rounded text-[10px] font-mono ${
+                    tickHz === hz ? 'bg-accent text-white' : 'bg-white/8 hover:bg-white/15'
+                  }`}
+                >
+                  {hz}
+                </button>
+              ))}
+            </div>
           </div>
           <label className="ml-2 flex items-center gap-1 text-[11px] text-white/65">
             <input

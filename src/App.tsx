@@ -6,6 +6,7 @@ import Window from '@/os/Window';
 import Spotlight from '@/os/Spotlight';
 import BootScreen from '@/os/BootScreen';
 import MobileFallback from '@/os/MobileFallback';
+import Toaster from '@/os/Toaster';
 import AiChat from '@/ai/AiChat';
 import AiFloatingButton from '@/ai/AiFloatingButton';
 import { useWindowStore } from '@/store/windowStore';
@@ -56,6 +57,13 @@ export default function App() {
       if (focusedId) closeWindow(focusedId);
     }, []),
   );
+  useKeyboardShortcut(
+    { key: 'm', meta: true },
+    useCallback(() => {
+      const { focusedId, minimizeWindow } = useWindowStore.getState();
+      if (focusedId) minimizeWindow(focusedId);
+    }, []),
+  );
 
   return (
     <div className="fixed inset-0 overflow-hidden">
@@ -73,6 +81,8 @@ export default function App() {
       <AiFloatingButton />
       <AiChat />
       <Spotlight />
+
+      <Toaster />
 
       {!booted && <BootScreen />}
       <MobileFallback />

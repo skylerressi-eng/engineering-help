@@ -10,8 +10,8 @@ export default {
       },
       colors: {
         accent: {
-          DEFAULT: '#0A84FF',
-          hover: '#3D9BFF',
+          DEFAULT: 'var(--accent, #0A84FF)',
+          hover: 'var(--accent-hover, #3D9BFF)',
         },
         traffic: {
           red: '#FF5F57',
