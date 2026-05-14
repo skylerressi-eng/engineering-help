@@ -6,7 +6,7 @@ import {
   GizmoHelper,
   GizmoViewport,
 } from '@react-three/drei';
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { useModelerStore, type SceneObject } from '@/store/modelerStore';
 import { applyStack } from '@/lib/modeler/modifiers';
@@ -52,16 +52,29 @@ function SceneObjects() {
   const setTransform = useModelerStore((s) => s.setTransform);
   const { camera, gl } = useThree();
   const meshRefs = useRef<Map<string, THREE.Mesh>>(new Map());
+  // refTick bumps every time a child registers/deregisters a mesh ref so we
+  // can re-render and pick up the latest mesh in the TransformControls JSX.
+  const [refTick, setRefTick] = useState(0);
+  const bump = () => setRefTick((t) => t + 1);
+  void refTick;
+
+  const selectedMesh = selectedId ? meshRefs.current.get(selectedId) : null;
 
   return (
     <>
       {objects.map((o) => (
-        <Obj key={o.id} obj={o} onClick={() => select(o.id)} meshRefs={meshRefs} />
+        <Obj
+          key={o.id}
+          obj={o}
+          onClick={() => select(o.id)}
+          meshRefs={meshRefs}
+          onRefChange={bump}
+        />
       ))}
-      {selectedId && meshRefs.current.get(selectedId) && (
+      {selectedId && selectedMesh && (
         <TransformControls
           // eslint-disable-next-line react/no-unknown-property
-          object={meshRefs.current.get(selectedId)!}
+          object={selectedMesh}
           mode={transformMode}
           camera={camera}
           domElement={gl.domElement}
@@ -84,10 +97,12 @@ function Obj({
   obj,
   onClick,
   meshRefs,
+  onRefChange,
 }: {
   obj: SceneObject;
   onClick: () => void;
   meshRefs: React.MutableRefObject<Map<string, THREE.Mesh>>;
+  onRefChange: () => void;
 }) {
   const selectedId = useModelerStore((s) => s.selectedId);
   const isSelected = selectedId === obj.id;
@@ -108,8 +123,13 @@ function Obj({
   return (
     <mesh
       ref={(m) => {
-        if (m) meshRefs.current.set(obj.id, m);
-        else meshRefs.current.delete(obj.id);
+        if (m) {
+          meshRefs.current.set(obj.id, m);
+          onRefChange();
+        } else if (meshRefs.current.has(obj.id)) {
+          meshRefs.current.delete(obj.id);
+          onRefChange();
+        }
       }}
       geometry={geom}
       position={obj.position}

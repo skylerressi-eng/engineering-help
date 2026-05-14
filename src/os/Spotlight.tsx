@@ -256,18 +256,26 @@ function AppResult({ id, name, description }: { id: string; name: string; descri
   return (
     <>
       <div
-        className="w-8 h-8 rounded-md flex items-center justify-center"
+        className="w-9 h-9 flex items-center justify-center relative overflow-hidden border border-white/15"
         style={{
+          borderRadius: '26%',
           background: app?.manifest.accent ?? 'linear-gradient(135deg, #3b82f6, #8b5cf6)',
         }}
       >
-        {Icon ? <Icon className="text-white" size={16} /> : null}
+        <div
+          className="absolute inset-x-0 top-0 h-1/2 pointer-events-none"
+          style={{
+            background:
+              'linear-gradient(180deg, rgba(255,255,255,0.30) 0%, rgba(255,255,255,0.00) 100%)',
+          }}
+        />
+        {Icon ? <Icon className="text-white relative z-10" size={18} strokeWidth={1.8} /> : null}
       </div>
       <div className="flex-1">
-        <div className="text-white text-[14px]">{name}</div>
-        <div className="text-white/50 text-xs">{description}</div>
+        <div className="text-white text-[14px] font-medium">{name}</div>
+        <div className="text-white/50 text-xs truncate">{description}</div>
       </div>
-      <div className="text-white/40 text-xs">App</div>
+      <div className="text-white/40 text-[11px] uppercase tracking-wider">App</div>
     </>
   );
 }

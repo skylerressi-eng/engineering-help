@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Canvas } from '@react-three/fiber';
-import { OrbitControls, PresentationControls, Center } from '@react-three/drei';
+import { OrbitControls, Center } from '@react-three/drei';
 import { Search, Boxes, Download } from 'lucide-react';
 import { PartsIcon } from '@/apps/icons';
 import * as THREE from 'three';
@@ -253,6 +253,22 @@ function PartsLib({ appId }: { appId: string }) {
   );
 }
 
+/* Tag color per category for the lightweight card silhouettes */
+const CATEGORY_COLORS: Record<string, string> = {
+  fasteners: '#fbbf24',
+  gears: '#a78bfa',
+  bearings: '#22d3ee',
+  brackets: '#f472b6',
+  springs: '#34d399',
+  shafts: '#94a3b8',
+  pulleys: '#60a5fa',
+  couplings: '#fb7185',
+  profiles: '#facc15',
+  wheels: '#0ea5e9',
+  pneumatic: '#10b981',
+  electronics: '#ec4899',
+};
+
 function PartCard({
   part,
   selected,
@@ -262,40 +278,29 @@ function PartCard({
   selected: boolean;
   onClick: () => void;
 }) {
-  const geom = useMemo(() => {
-    try {
-      return part.build(defaultParams(part));
-    } catch {
-      return null;
-    }
-  }, [part]);
+  // Lightweight silhouette derived from category — no R3F per card.
+  const accent = CATEGORY_COLORS[part.category] ?? '#94a3b8';
   return (
     <button
       onClick={onClick}
-      className={`rounded-lg overflow-hidden border ${
-        selected ? 'border-accent' : 'border-white/10'
-      } bg-black/35 hover:bg-black/50 text-left transition-colors`}
+      className={`group rounded-xl overflow-hidden border transition-all ${
+        selected
+          ? 'border-accent shadow-lg shadow-accent/20 scale-[1.01]'
+          : 'border-white/10 hover:border-white/25'
+      } bg-black/35 hover:bg-black/55 text-left`}
     >
-      <div className="h-32 relative">
-        <Canvas camera={{ position: [2.5, 2, 3], fov: 35 }} dpr={[1, 2]}>
-          <ambientLight intensity={0.5} />
-          <directionalLight position={[4, 6, 4]} intensity={1.4} />
-          <directionalLight position={[-4, -2, -6]} intensity={0.3} />
-          <PresentationControls
-            global
-            rotation={[0.2, 0.4, 0]}
-            polar={[-0.4, 0.4]}
-            azimuth={[-0.6, 0.6]}
-          >
-            {geom && (
-              <Center>
-                <mesh geometry={geom}>
-                  <meshStandardMaterial color="#cbd5e1" metalness={0.55} roughness={0.35} />
-                </mesh>
-              </Center>
-            )}
-          </PresentationControls>
-        </Canvas>
+      <div className="h-28 relative overflow-hidden flex items-center justify-center">
+        {/* gradient backdrop */}
+        <div
+          className="absolute inset-0"
+          style={{
+            background: `radial-gradient(ellipse at 30% 30%, ${accent}33 0%, transparent 60%), linear-gradient(135deg, #0b1020 0%, #0f172a 100%)`,
+          }}
+        />
+        {/* category glyph */}
+        <PartSilhouette categoryId={part.category} accent={accent} />
+        {/* selected ring */}
+        {selected && <div className="absolute inset-0 ring-2 ring-accent/40 rounded-xl pointer-events-none" />}
       </div>
       <div className="p-2">
         <div className="text-xs font-medium text-white truncate">{part.name}</div>
@@ -303,6 +308,128 @@ function PartCard({
       </div>
     </button>
   );
+}
+
+/** Per-category SVG silhouette — bright, lightweight, no GL context needed. */
+function PartSilhouette({ categoryId, accent }: { categoryId: string; accent: string }) {
+  const stroke = accent;
+  switch (categoryId) {
+    case 'fasteners':
+      return (
+        <svg viewBox="0 0 64 64" className="w-20 h-20" fill="none" stroke={stroke} strokeWidth={1.6}>
+          <polygon points="22,8 42,8 48,14 48,22 42,28 22,28 16,22 16,14" fill={`${stroke}25`} />
+          <rect x="28" y="28" width="8" height="30" fill={`${stroke}25`} />
+        </svg>
+      );
+    case 'gears':
+      return (
+        <svg viewBox="0 0 64 64" className="w-20 h-20" fill="none" stroke={stroke} strokeWidth={1.6}>
+          <g fill={`${stroke}20`}>
+            {[...Array(10)].map((_, i) => {
+              const a = (i / 10) * Math.PI * 2;
+              const x = 32 + Math.cos(a) * 24;
+              const y = 32 + Math.sin(a) * 24;
+              return <rect key={i} x={x - 3} y={y - 3} width="6" height="6" transform={`rotate(${(a * 180) / Math.PI} ${x} ${y})`} />;
+            })}
+          </g>
+          <circle cx="32" cy="32" r="20" fill={`${stroke}20`} />
+          <circle cx="32" cy="32" r="6" />
+        </svg>
+      );
+    case 'bearings':
+      return (
+        <svg viewBox="0 0 64 64" className="w-20 h-20" fill="none" stroke={stroke} strokeWidth={1.6}>
+          <circle cx="32" cy="32" r="24" fill={`${stroke}20`} />
+          <circle cx="32" cy="32" r="14" fill="#0b1020" />
+          <circle cx="32" cy="32" r="8" />
+          {[0, 1, 2, 3, 4, 5, 6, 7].map((i) => {
+            const a = (i / 8) * Math.PI * 2;
+            return <circle key={i} cx={32 + Math.cos(a) * 19} cy={32 + Math.sin(a) * 19} r="3" fill={stroke} />;
+          })}
+        </svg>
+      );
+    case 'brackets':
+      return (
+        <svg viewBox="0 0 64 64" className="w-20 h-20" fill={`${stroke}25`} stroke={stroke} strokeWidth={1.6}>
+          <path d="M14 12h12v28h22v12H14z" />
+          <circle cx="42" cy="46" r="2" fill="#0b1020" />
+          <circle cx="20" cy="20" r="2" fill="#0b1020" />
+        </svg>
+      );
+    case 'springs':
+      return (
+        <svg viewBox="0 0 64 64" className="w-20 h-20" fill="none" stroke={stroke} strokeWidth={1.6}>
+          <path d="M14 16 H50 M14 24 H50 M14 32 H50 M14 40 H50 M14 48 H50" />
+          <ellipse cx="32" cy="16" rx="18" ry="3" fill={`${stroke}25`} />
+        </svg>
+      );
+    case 'shafts':
+      return (
+        <svg viewBox="0 0 64 64" className="w-20 h-20" fill={`${stroke}25`} stroke={stroke} strokeWidth={1.6}>
+          <rect x="6" y="26" width="52" height="12" rx="2" />
+          <rect x="22" y="22" width="14" height="6" fill="#0b1020" />
+        </svg>
+      );
+    case 'pulleys':
+      return (
+        <svg viewBox="0 0 64 64" className="w-20 h-20" fill="none" stroke={stroke} strokeWidth={1.6}>
+          <ellipse cx="32" cy="32" rx="22" ry="22" fill={`${stroke}20`} />
+          <ellipse cx="32" cy="32" rx="22" ry="6" fill="#0b1020" />
+          <circle cx="32" cy="32" r="4" fill={stroke} />
+        </svg>
+      );
+    case 'couplings':
+      return (
+        <svg viewBox="0 0 64 64" className="w-20 h-20" fill={`${stroke}25`} stroke={stroke} strokeWidth={1.6}>
+          <rect x="10" y="22" width="22" height="20" rx="2" />
+          <rect x="32" y="22" width="22" height="20" rx="2" />
+          <line x1="32" y1="22" x2="32" y2="42" />
+        </svg>
+      );
+    case 'profiles':
+      return (
+        <svg viewBox="0 0 64 64" className="w-20 h-20" fill={`${stroke}25`} stroke={stroke} strokeWidth={1.6}>
+          <rect x="14" y="10" width="36" height="6" />
+          <rect x="28" y="16" width="8" height="32" />
+          <rect x="14" y="48" width="36" height="6" />
+        </svg>
+      );
+    case 'wheels':
+      return (
+        <svg viewBox="0 0 64 64" className="w-20 h-20" fill={`${stroke}25`} stroke={stroke} strokeWidth={1.6}>
+          <circle cx="32" cy="32" r="22" />
+          <circle cx="32" cy="32" r="6" fill="#0b1020" />
+          <line x1="32" y1="14" x2="32" y2="26" />
+          <line x1="32" y1="38" x2="32" y2="50" />
+          <line x1="14" y1="32" x2="26" y2="32" />
+          <line x1="38" y1="32" x2="50" y2="32" />
+        </svg>
+      );
+    case 'pneumatic':
+      return (
+        <svg viewBox="0 0 64 64" className="w-20 h-20" fill={`${stroke}25`} stroke={stroke} strokeWidth={1.6}>
+          <rect x="6" y="26" width="32" height="12" rx="2" />
+          <rect x="38" y="26" width="20" height="20" rx="2" />
+          <circle cx="48" cy="36" r="4" fill="#0b1020" />
+        </svg>
+      );
+    case 'electronics':
+      return (
+        <svg viewBox="0 0 64 64" className="w-20 h-20" fill={`${stroke}25`} stroke={stroke} strokeWidth={1.6}>
+          <rect x="14" y="14" width="36" height="36" rx="4" />
+          <line x1="22" y1="22" x2="22" y2="50" />
+          <line x1="30" y1="22" x2="30" y2="50" />
+          <line x1="38" y1="22" x2="38" y2="50" />
+          <circle cx="42" cy="42" r="2" fill={stroke} />
+        </svg>
+      );
+    default:
+      return (
+        <svg viewBox="0 0 64 64" className="w-16 h-16" fill="none" stroke={stroke} strokeWidth={1.6}>
+          <rect x="14" y="14" width="36" height="36" rx="4" />
+        </svg>
+      );
+  }
 }
 
 function DetailView({ geometry }: { geometry: THREE.BufferGeometry | null }) {

@@ -116,16 +116,16 @@ function DockIcon({
       return;
     }
     setLaunching(app.id, true);
-    window.setTimeout(() => {
-      openApp(app.id, {
-        title: app.name,
-        width: app.defaultSize?.width,
-        height: app.defaultSize?.height,
-        x: app.defaultPosition?.x,
-        y: app.defaultPosition?.y,
-      });
-      setLaunching(app.id, false);
-    }, 380);
+    // Open the window immediately so the user sees a response, then clear the
+    // bouncing flag a moment later for the visual flourish.
+    openApp(app.id, {
+      title: app.name,
+      width: app.defaultSize?.width,
+      height: app.defaultSize?.height,
+      x: app.defaultPosition?.x,
+      y: app.defaultPosition?.y,
+    });
+    window.setTimeout(() => setLaunching(app.id, false), 600);
   };
 
   const Icon = app.icon;

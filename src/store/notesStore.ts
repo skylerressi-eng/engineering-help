@@ -21,12 +21,32 @@ function load(): Note[] {
   }
 }
 
-function persist(notes: Note[]) {
+/**
+ * Persist notes to localStorage. We coalesce calls onto a 400ms debounce so
+ * that fast typing doesn't perform a full JSON.stringify+localStorage write
+ * on every keystroke.
+ */
+let persistTimer: ReturnType<typeof setTimeout> | null = null;
+let pendingNotes: Note[] | null = null;
+
+function flushPersist() {
+  if (!pendingNotes) return;
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(notes));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(pendingNotes));
   } catch {
     /* quota */
   }
+  pendingNotes = null;
+}
+
+function persist(notes: Note[]) {
+  pendingNotes = notes;
+  if (persistTimer) clearTimeout(persistTimer);
+  persistTimer = setTimeout(flushPersist, 400);
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('beforeunload', flushPersist);
 }
 
 let seq = 1;
