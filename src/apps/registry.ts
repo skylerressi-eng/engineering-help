@@ -3,8 +3,10 @@ import hello from './hello';
 import calculator from './calculator';
 import converter from './converter';
 import notes from './notes';
+import logiclab from './logiclab';
 
 export const APPS: Record<string, AppModule> = {
+  [logiclab.manifest.id]: logiclab,
   [calculator.manifest.id]: calculator,
   [converter.manifest.id]: converter,
   [notes.manifest.id]: notes,
