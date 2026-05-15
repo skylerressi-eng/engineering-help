@@ -37,6 +37,12 @@ export default function Renderer() {
     cursor: { x: number; y: number };
   } | null>(null);
 
+  // The rAF loop captures `draw` as a closure. We refresh a ref every render
+  // so the loop always calls the latest draw fn (which closes over the latest
+  // selectedId, debug toggles, tool, etc.).
+  const drawRef = useRef<() => void>(() => {});
+  drawRef.current = draw;
+
   // Animation loop
   useEffect(() => {
     let raf = 0;
@@ -45,7 +51,7 @@ export default function Renderer() {
       const dt = Math.min(1 / 30, (now - last) / 1000);
       last = now;
       step(dt);
-      draw();
+      drawRef.current();
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);

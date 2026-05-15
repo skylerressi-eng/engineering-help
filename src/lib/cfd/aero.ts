@@ -24,6 +24,10 @@ export interface AeroInputs {
   chord: number;
   /** dynamic viscosity Pa·s — air at 15 °C */
   mu?: number;
+  /** Override the zero-lift angle (radians) — used by custom NACA shapes */
+  alphaZero?: number;
+  /** Override the zero-AoA drag coefficient — used by custom NACA shapes */
+  cd0?: number;
 }
 
 export interface AeroResults {
@@ -52,7 +56,7 @@ export function aero(input: AeroInputs): AeroResults {
   const { airfoil, aoa, V, rho, chord } = input;
   const mu = input.mu ?? MU_AIR;
   const preset = getAirfoil(airfoil);
-  const a0 = alphaZeroLift(airfoil);
+  const a0 = input.alphaZero ?? alphaZeroLift(airfoil);
   const aEff = aoa - a0;
   const stalled = Math.abs(aoa) * (180 / Math.PI) > STALL_DEG;
 
@@ -70,7 +74,8 @@ export function aero(input: AeroInputs): AeroResults {
   }
 
   const k = airfoil === 'cylinder' ? 0 : 0.04; // induced drag factor (effective aspect ratio fudge)
-  let cd = preset.cd0 + k * cl * cl;
+  const cd0 = input.cd0 ?? preset.cd0;
+  let cd = cd0 + k * cl * cl;
   if (stalled) cd += 0.6 * (Math.abs(aoa) - (STALL_DEG * Math.PI) / 180);
 
   const re = (rho * Math.abs(V) * chord) / mu;

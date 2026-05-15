@@ -134,13 +134,20 @@ export const useModelerStore = create<ModelerStore>((set, get) => ({
     set((s) => ({ objects: s.objects.map((o) => (o.id === id ? { ...o, name } : o)) })),
 
   remove: (id) =>
-    set((s) => ({
-      objects: s.objects.filter((o) => o.id !== id),
-      selectedId: s.selectedId === id ? null : s.selectedId,
-      rev: s.rev + 1,
-    })),
+    set((s) => {
+      const target = s.objects.find((o) => o.id === id);
+      target?.geometry.dispose();
+      return {
+        objects: s.objects.filter((o) => o.id !== id),
+        selectedId: s.selectedId === id ? null : s.selectedId,
+        rev: s.rev + 1,
+      };
+    }),
 
-  clear: () => set({ objects: [], selectedId: null, rev: get().rev + 1 }),
+  clear: () => {
+    for (const o of get().objects) o.geometry.dispose();
+    set({ objects: [], selectedId: null, rev: get().rev + 1 });
+  },
 
   duplicate: (id) => {
     const o = get().objects.find((x) => x.id === id);
@@ -167,6 +174,9 @@ export const useModelerStore = create<ModelerStore>((set, get) => ({
       const geom = csg(a.geometry, aMat, b.geometry, bMat, op);
       const name = `${a.name} ${op} ${b.name}`;
       const obj = makeObject(name, geom, 'csg', { color: a.color });
+      // Dispose the source geometries — they're being replaced by the CSG result
+      a.geometry.dispose();
+      b.geometry.dispose();
       set((s) => ({
         objects: [...s.objects.filter((o) => o.id !== aId && o.id !== bId), obj],
         selectedId: obj.id,
@@ -175,6 +185,9 @@ export const useModelerStore = create<ModelerStore>((set, get) => ({
       return obj.id;
     } catch (err) {
       console.error('CSG failed', err);
+      import('@/store/toastStore').then(({ toast }) =>
+        toast.error('Boolean failed', (err as Error).message),
+      );
       return null;
     }
   },

@@ -63,7 +63,7 @@ function ConwayApp({ appId }: { appId: string }) {
       c.style.width = `${W * px}px`;
       c.style.height = `${H * px}px`;
       setCellPx(px);
-      draw();
+      drawRef.current();
     });
     ro.observe(el);
     return () => ro.disconnect();
@@ -71,6 +71,11 @@ function ConwayApp({ appId }: { appId: string }) {
   }, [W, H]);
 
   // Main loop
+  // Use a ref to the latest draw fn so the rAF loop always renders with
+  // current cellPx / pickedPattern / hover values.
+  const drawRef = useRef<() => void>(() => {});
+  drawRef.current = draw;
+
   useEffect(() => {
     let raf = 0;
     const loop = (now: number) => {
@@ -86,7 +91,7 @@ function ConwayApp({ appId }: { appId: string }) {
           setGeneration((g) => g + 1);
         }
       }
-      draw();
+      drawRef.current();
       raf = requestAnimationFrame(loop);
     };
     raf = requestAnimationFrame(loop);

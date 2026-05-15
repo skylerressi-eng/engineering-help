@@ -46,14 +46,18 @@ function AeroSim({ appId }: { appId: string }) {
         V,
         rho,
         chord,
+        // When the user is driving a custom NACA, override the empirical
+        // values so analytics actually track their slider changes.
+        alphaZero: useCustom ? -1.07 * customM * 100 * (Math.PI / 180) : undefined,
+        cd0: useCustom ? 0.005 + customT * 0.04 : undefined,
       }),
-    [airfoil, aoaDeg, V, rho, chord],
+    [airfoil, aoaDeg, V, rho, chord, useCustom, customM, customT],
   );
 
   // Publish for the AI scanner
   useEffect(() => {
     return publishAppState(appId, () => ({
-      summary: `AeroSim showing ${airfoil} at ${aoaDeg.toFixed(1)}° AoA, V = ${V} m/s, ρ = ${rho} kg/m³, chord = ${chord} m. Cl = ${results.cl.toFixed(3)}, Cd = ${results.cd.toFixed(4)}, L/D = ${results.ld.toFixed(2)}, Re = ${results.re.toExponential(2)}.${results.stalled ? ' Airfoil is STALLED.' : ''} Mode: ${mode}${threeD ? ' (3D)' : ''}.`,
+      summary: `AeroSim showing ${useCustom ? `custom NACA ${Math.round(customM * 100)}${Math.round(customP * 10)}${String(Math.round(customT * 100)).padStart(2, '0')}` : airfoil} at ${aoaDeg.toFixed(1)}° AoA, V = ${V} m/s, ρ = ${rho} kg/m³, chord = ${chord} m. Cl = ${results.cl.toFixed(3)}, Cd = ${results.cd.toFixed(4)}, L/D = ${results.ld.toFixed(2)}, Re = ${results.re.toExponential(2)}.${results.stalled ? ' Airfoil is STALLED.' : ''} Mode: ${mode}${threeD ? ' (3D)' : ''}.`,
       state: {
         airfoil,
         aoaDeg,
@@ -201,7 +205,14 @@ function AeroSim({ appId }: { appId: string }) {
 
         {/* Top-left HUD */}
         <div className="absolute top-2 left-2 glass-strong rounded-md px-2 py-1.5 text-[11px] text-white/85 font-mono space-y-0.5 pointer-events-none">
-          <div>airfoil <span className="text-accent">{airfoil}</span></div>
+          <div>
+            airfoil{' '}
+            <span className="text-accent">
+              {useCustom
+                ? `NACA ${Math.round(customM * 100)}${Math.round(customP * 10)}${String(Math.round(customT * 100)).padStart(2, '0')}`
+                : airfoil}
+            </span>
+          </div>
           <div>V <span className="text-accent">{V.toFixed(1)}</span> m/s</div>
           <div>α <span className="text-accent">{aoaDeg.toFixed(1)}°</span></div>
           <div>Re <span className="text-accent">{results.re.toExponential(2)}</span></div>
