@@ -68,7 +68,17 @@ export function makeRegularPolygon(n: number, radius: number, rotation = 0): Pol
   return makePolygonFromVertices(verts);
 }
 
-export function makePolygonFromVertices(vertices: Vec2[]): PolygonShape {
+export function makePolygonFromVertices(input: Vec2[]): PolygonShape {
+  // Ensure CCW winding so the outward-normal computation is correct no matter
+  // how the caller produced the points (imported / silhouette / y-flipped).
+  let area2 = 0;
+  for (let i = 0; i < input.length; i++) {
+    const a = input[i];
+    const b = input[(i + 1) % input.length];
+    area2 += a.x * b.y - b.x * a.y;
+  }
+  const vertices = area2 < 0 ? input.slice().reverse() : input.slice();
+
   const normals: Vec2[] = [];
   for (let i = 0; i < vertices.length; i++) {
     const a = vertices[i];

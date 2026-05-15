@@ -50,6 +50,13 @@ function PartsLib({ appId }: { appId: string }) {
     }
   }, [selected, params]);
 
+  // Free the previous procedurally-built preview geometry
+  useEffect(() => {
+    return () => {
+      geometry?.dispose();
+    };
+  }, [geometry]);
+
   // When a new part is selected, reset its params
   useEffect(() => {
     if (selected) setParams(defaultParams(selected));
@@ -295,6 +302,12 @@ function LibraryPanel() {
     () => (sel ? geometryFromJSON(sel.geom) : null),
     [sel],
   );
+  // Free the previous preview geometry when the selection changes / unmounts
+  useEffect(() => {
+    return () => {
+      geom?.dispose();
+    };
+  }, [geom]);
 
   const sendToModeler = () => {
     if (!sel || !geom) return;
