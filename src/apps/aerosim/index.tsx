@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import { ChevronDown, BarChart3, X } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { ChevronDown, BarChart3, X, Upload, Play, Pause, RotateCcw, Box } from 'lucide-react';
 import { AeroIcon } from '@/apps/icons';
 import type { AppModule } from '@/os/types';
 import { useAerosimStore, type AeroMode, type VizMode } from '@/store/aerosimStore';
@@ -7,6 +7,9 @@ import { AIRFOILS, type AirfoilId } from '@/lib/cfd/naca';
 import { aero } from '@/lib/cfd/aero';
 import { useAppTools } from '@/hooks/useToolRegistry';
 import { publishAppState } from '@/ai/screenScanner';
+import { parseOBJ, extractSilhouette } from '@/lib/cfd/customShape';
+import { useModelerStore } from '@/store/modelerStore';
+import { toast } from '@/store/toastStore';
 import Viewport from './Viewport';
 
 function AeroSim({ appId }: { appId: string }) {
@@ -37,6 +40,49 @@ function AeroSim({ appId }: { appId: string }) {
   const setViz = useAerosimStore((s) => s.setViz);
   const setThreeD = useAerosimStore((s) => s.setThreeD);
   const setSweep = useAerosimStore((s) => s.setSweep);
+  const source = useAerosimStore((s) => s.source);
+  const imported = useAerosimStore((s) => s.imported);
+  const setImported = useAerosimStore((s) => s.setImported);
+  const running = useAerosimStore((s) => s.running);
+  const setRunning = useAerosimStore((s) => s.setRunning);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const onImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const geom = parseOBJ(text);
+      const sil = extractSilhouette(geom);
+      if (sil.length < 3) {
+        toast.error('Import failed', 'Could not extract a cross-section from that mesh.');
+      } else {
+        setImported({ name: file.name.replace(/\.obj$/i, ''), silhouette: sil, geometry: geom });
+        toast.success('Model imported', `${file.name} — testing its silhouette in the flow.`);
+      }
+    } catch (err) {
+      toast.error('Import failed', (err as Error).message);
+    } finally {
+      e.target.value = '';
+    }
+  };
+
+  const importFromModeler = () => {
+    const m = useModelerStore.getState();
+    const sel = m.selectedId ? m.objects.find((o) => o.id === m.selectedId) : null;
+    const obj = sel ?? m.objects[m.objects.length - 1];
+    if (!obj) {
+      toast.warn('Nothing to import', 'Open Modeler3D and select an object first.');
+      return;
+    }
+    const sil = extractSilhouette(obj.geometry);
+    if (sil.length < 3) {
+      toast.error('Import failed', 'That object has no usable cross-section.');
+      return;
+    }
+    setImported({ name: obj.name, silhouette: sil, geometry: obj.geometry.clone() });
+    toast.success('Imported from Modeler3D', `Testing "${obj.name}".`);
+  };
 
   const results = useMemo(
     () =>
@@ -198,7 +244,63 @@ function AeroSim({ appId }: { appId: string }) {
   ]);
 
   return (
-    <div className="flex h-full">
+    <div className="flex h-full flex-col">
+      {/* Top toolbar */}
+      <div className="h-9 shrink-0 flex items-center gap-1 px-2 border-b border-white/10 chrome">
+        <button
+          onClick={() => setRunning(!running)}
+          className="flex items-center gap-1 px-2 h-6 rounded-md text-xs bg-accent hover:bg-accent-hover text-white"
+        >
+          {running ? <Pause size={12} /> : <Play size={12} />}
+          {running ? 'Pause' : 'Run'} flow
+        </button>
+        <button
+          onClick={() => useAerosimStore.getState().bump()}
+          title="Reset flow field"
+          className="flex items-center gap-1 px-2 h-6 rounded-md text-xs hover:bg-white/10"
+        >
+          <RotateCcw size={12} /> Reset
+        </button>
+        <div className="mx-1 w-px h-4 bg-white/15" />
+        <button
+          onClick={() => fileRef.current?.click()}
+          className="flex items-center gap-1 px-2 h-6 rounded-md text-xs hover:bg-white/10"
+          title="Import a .obj model and test its cross-section"
+        >
+          <Upload size={12} /> Import .obj
+        </button>
+        <button
+          onClick={importFromModeler}
+          className="flex items-center gap-1 px-2 h-6 rounded-md text-xs hover:bg-white/10"
+          title="Pull the selected Modeler3D object"
+        >
+          <Box size={12} /> From Modeler3D
+        </button>
+        <input ref={fileRef} type="file" accept=".obj" hidden onChange={onImportFile} />
+        {source === 'import' && imported && (
+          <div className="flex items-center gap-1.5 ml-1 px-2 h-6 rounded-md bg-accent/20 text-accent text-[11px]">
+            <Box size={11} />
+            <span className="font-mono max-w-[140px] truncate">{imported.name}</span>
+            <button
+              onClick={() => setImported(null)}
+              className="hover:text-white"
+              title="Clear imported model"
+            >
+              <X size={11} />
+            </button>
+          </div>
+        )}
+        <label className="ml-auto flex items-center gap-1.5 text-xs text-white/70 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={threeD}
+            onChange={(e) => setThreeD(e.target.checked)}
+          />
+          3D view
+        </label>
+      </div>
+
+      <div className="flex flex-1 min-h-0">
       {/* Three.js viewport */}
       <div className="flex-1 relative min-w-0">
         <Viewport />
@@ -206,11 +308,13 @@ function AeroSim({ appId }: { appId: string }) {
         {/* Top-left HUD */}
         <div className="absolute top-2 left-2 glass-strong rounded-md px-2 py-1.5 text-[11px] text-white/85 font-mono space-y-0.5 pointer-events-none">
           <div>
-            airfoil{' '}
+            shape{' '}
             <span className="text-accent">
-              {useCustom
-                ? `NACA ${Math.round(customM * 100)}${Math.round(customP * 10)}${String(Math.round(customT * 100)).padStart(2, '0')}`
-                : airfoil}
+              {source === 'import' && imported
+                ? imported.name
+                : useCustom
+                  ? `NACA ${Math.round(customM * 100)}${Math.round(customP * 10)}${String(Math.round(customT * 100)).padStart(2, '0')}`
+                  : airfoil}
             </span>
           </div>
           <div>V <span className="text-accent">{V.toFixed(1)}</span> m/s</div>
@@ -326,14 +430,6 @@ function AeroSim({ appId }: { appId: string }) {
             </div>
           )}
 
-          <label className="flex items-center gap-2 text-xs text-white/75">
-            <input
-              type="checkbox"
-              checked={threeD}
-              onChange={(e) => setThreeD(e.target.checked)}
-            />
-            3D wing
-          </label>
 
           <div className="border-t border-white/10 pt-3">
             <div className="text-[10px] uppercase text-white/45 mb-1.5">Results</div>
@@ -351,6 +447,7 @@ function AeroSim({ appId }: { appId: string }) {
 
           <SweepButton />
         </div>
+      </div>
       </div>
     </div>
   );

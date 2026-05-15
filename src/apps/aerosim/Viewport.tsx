@@ -3,7 +3,8 @@ import { OrbitControls, Grid, GizmoHelper, GizmoViewport } from '@react-three/dr
 import { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { useAerosimStore } from '@/store/aerosimStore';
-import { generateAirfoil, naca4Custom, placeShape, type AirfoilId } from '@/lib/cfd/naca';
+import { generateAirfoil, naca4Custom, placeShape } from '@/lib/cfd/naca';
+import type { Vec2 } from '@/lib/physics2d/math';
 import { advectRK2, makeFlowField } from '@/lib/cfd/potential';
 import {
   makeGrid,
@@ -72,43 +73,64 @@ function CameraSwitcher() {
 function SceneContents() {
   const mode = useAerosimStore((s) => s.mode);
   const threeD = useAerosimStore((s) => s.threeD);
-  const airfoil = useAerosimStore((s) => s.airfoil);
   const aoaDeg = useAerosimStore((s) => s.aoaDeg);
   const chord = useAerosimStore((s) => s.chord);
   const aoa = (aoaDeg * Math.PI) / 180;
 
   return (
     <>
-      <AirfoilMesh airfoil={airfoil} chord={chord} aoa={aoa} threeD={threeD} />
+      <AirfoilMesh chord={chord} aoa={aoa} threeD={threeD} />
       {mode === 'simple' ? (
-        <Streamlines airfoil={airfoil} chord={chord} aoa={aoa} />
+        <Streamlines chord={chord} aoa={aoa} />
       ) : (
-        <FluidField airfoil={airfoil} chord={chord} aoa={aoa} />
+        <FluidField chord={chord} aoa={aoa} />
       )}
     </>
   );
 }
 
+/** Resolve the active 2D outline (unit-chord verts) from the current source. */
+export function useActiveSilhouette(): Vec2[] {
+  const source = useAerosimStore((s) => s.source);
+  const airfoil = useAerosimStore((s) => s.airfoil);
+  const customM = useAerosimStore((s) => s.customM);
+  const customP = useAerosimStore((s) => s.customP);
+  const customT = useAerosimStore((s) => s.customT);
+  const imported = useAerosimStore((s) => s.imported);
+  return useMemo(() => {
+    if (source === 'import' && imported?.silhouette.length) return imported.silhouette;
+    if (source === 'naca') return naca4Custom(customM, customP, customT, 60);
+    return generateAirfoil(airfoil, 60);
+  }, [source, airfoil, customM, customP, customT, imported]);
+}
+
 function AirfoilMesh({
-  airfoil,
   chord,
   aoa,
   threeD,
 }: {
-  airfoil: AirfoilId;
   chord: number;
   aoa: number;
   threeD: boolean;
 }) {
-  const useCustom = useAerosimStore((s) => s.useCustom);
-  const customM = useAerosimStore((s) => s.customM);
-  const customP = useAerosimStore((s) => s.customP);
-  const customT = useAerosimStore((s) => s.customT);
+  const source = useAerosimStore((s) => s.source);
+  const imported = useAerosimStore((s) => s.imported);
+  const verts = useActiveSilhouette();
+
   const geom = useMemo(() => {
-    const verts = useCustom
-      ? naca4Custom(customM, customP, customT, 60)
-      : generateAirfoil(airfoil, 60);
-    // Center on quarter-chord, scale by chord, rotate by -aoa
+    // In 3D mode, prefer the *actual* imported mesh so users see their model.
+    if (threeD && source === 'import' && imported?.geometry) {
+      const g = imported.geometry.clone();
+      g.computeBoundingBox();
+      const bb = g.boundingBox!;
+      const size = bb.getSize(new THREE.Vector3());
+      const maxDim = Math.max(size.x, size.y, size.z) || 1;
+      const s = (chord * 2.4) / maxDim;
+      g.center();
+      g.scale(s, s, s);
+      g.rotateZ(-aoa);
+      return g;
+    }
     const placed = placeShape(verts, { x: 0, y: 0 }, chord, aoa);
     const shape = new THREE.Shape();
     shape.moveTo(placed[0].x, -placed[0].y);
@@ -120,14 +142,14 @@ function AirfoilMesh({
       return ex;
     }
     return new THREE.ShapeGeometry(shape);
-  }, [airfoil, chord, aoa, threeD, useCustom, customM, customP, customT]);
+  }, [verts, chord, aoa, threeD, source, imported]);
 
   return (
     <mesh geometry={geom} castShadow receiveShadow>
       <meshStandardMaterial
         color="#e2e8f0"
-        metalness={0.4}
-        roughness={0.35}
+        metalness={0.45}
+        roughness={0.3}
         side={THREE.DoubleSide}
       />
     </mesh>
@@ -136,23 +158,18 @@ function AirfoilMesh({
 
 /* Streamlines: a packed buffer of N segments updated each frame */
 function Streamlines({
-  airfoil,
   chord,
   aoa,
 }: {
-  airfoil: AirfoilId;
   chord: number;
   aoa: number;
 }) {
   const V = useAerosimStore((s) => s.V);
+  const airfoil = useAerosimStore((s) => s.airfoil);
+  const source = useAerosimStore((s) => s.source);
+  const isCyl = source === 'preset' && airfoil === 'cylinder';
   const fieldRef = useRef(
-    makeFlowField({
-      V,
-      aoa,
-      chord,
-      isCylinder: airfoil === 'cylinder',
-      center: { x: 0, y: 0 },
-    }),
+    makeFlowField({ V, aoa, chord, isCylinder: isCyl, center: { x: 0, y: 0 } }),
   );
 
   // Reset field when inputs change
@@ -161,10 +178,10 @@ function Streamlines({
       V,
       aoa,
       chord,
-      isCylinder: airfoil === 'cylinder',
+      isCylinder: isCyl,
       center: { x: 0, y: 0 },
     });
-  }, [V, aoa, chord, airfoil]);
+  }, [V, aoa, chord, isCyl]);
 
   // Particle state: positions + per-particle "trail" (history)
   const TRAIL = 28;
@@ -184,6 +201,7 @@ function Streamlines({
   }, []);
 
   useFrame((_, dt) => {
+    if (!useAerosimStore.getState().running) return;
     const cappedDt = Math.min(0.05, dt);
     const positions = segGeom.attributes.position.array as Float32Array;
     const colors = segGeom.attributes.color.array as Float32Array;
@@ -257,16 +275,15 @@ function seedParticle() {
 
 /* Stable-fluids grid + textured plane visualization */
 function FluidField({
-  airfoil,
   chord,
   aoa,
 }: {
-  airfoil: AirfoilId;
   chord: number;
   aoa: number;
 }) {
   const V = useAerosimStore((s) => s.V);
   const viz = useAerosimStore((s) => s.viz);
+  const verts = useActiveSilhouette();
 
   const gridRef = useRef<FluidGrid>(makeGrid(FLUID_W, FLUID_H));
   const tex = useRef<THREE.DataTexture>();
@@ -281,16 +298,9 @@ function FluidField({
     tex.current = t;
   }
 
-  const useCustomShape = useAerosimStore((s) => s.useCustom);
-  const cM = useAerosimStore((s) => s.customM);
-  const cP = useAerosimStore((s) => s.customP);
-  const cT = useAerosimStore((s) => s.customT);
   // Re-stamp obstacle whenever shape changes
   useEffect(() => {
     const g = gridRef.current;
-    const verts = useCustomShape
-      ? naca4Custom(cM, cP, cT, 60)
-      : generateAirfoil(airfoil, 60);
     const placed = placeShape(verts, { x: 0, y: 0 }, chord, aoa);
     // Map world (FLOW_DOMAIN) → grid cells
     const toGrid = (p: { x: number; y: number }) => ({
@@ -299,9 +309,10 @@ function FluidField({
     });
     const poly = placed.map(toGrid);
     stampObstacle(g, poly);
-  }, [airfoil, chord, aoa, useCustomShape, cM, cP, cT]);
+  }, [verts, chord, aoa]);
 
   useFrame((_, dtRaw) => {
+    if (!useAerosimStore.getState().running) return;
     const g = gridRef.current;
     // Roughly match Re by scaling viscosity; cap dt for stability
     const dt = Math.min(0.05, dtRaw) * 1.0;

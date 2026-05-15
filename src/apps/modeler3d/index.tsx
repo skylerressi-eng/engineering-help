@@ -37,7 +37,7 @@ import { useAppTools } from '@/hooks/useToolRegistry';
 import { publishAppState } from '@/ai/screenScanner';
 import { downloadBlob, toASCIISTL, toBinarySTL, toOBJ } from '@/lib/modeler/exporters';
 import { extrudePolygon } from '@/lib/modeler/primitives';
-import { ModelerIcon } from '@/apps/icons';
+import { ModelerIcon, AeroIcon } from '@/apps/icons';
 
 function Modeler3D({ appId }: { appId: string }) {
   const objects = useModelerStore((s) => s.objects);
@@ -369,6 +369,40 @@ function Modeler3D({ appId }: { appId: string }) {
             )}
           </div>
           <div className="ml-auto flex items-center gap-1">
+            <button
+              onClick={() => {
+                const obj = selected ?? objects[objects.length - 1];
+                if (!obj) {
+                  import('@/store/toastStore').then(({ toast }) =>
+                    toast.warn('Nothing to send', 'Add or select an object first.'),
+                  );
+                  return;
+                }
+                Promise.all([
+                  import('@/lib/cfd/customShape'),
+                  import('@/store/aerosimStore'),
+                  import('@/store/windowStore'),
+                  import('@/store/toastStore'),
+                ]).then(([cs, aero, win, t]) => {
+                  const sil = cs.extractSilhouette(obj.geometry);
+                  if (sil.length < 3) {
+                    t.toast.error('Send failed', 'That object has no usable cross-section.');
+                    return;
+                  }
+                  aero.useAerosimStore.getState().setImported({
+                    name: obj.name,
+                    silhouette: sil,
+                    geometry: obj.geometry.clone(),
+                  });
+                  win.useWindowStore.getState().openApp('aerosim', { title: 'AeroSim' });
+                  t.toast.success('Sent to AeroSim', `Testing "${obj.name}" in the wind.`);
+                });
+              }}
+              title="Test the selected object in AeroSim"
+              className="flex items-center gap-1 px-2 h-6 rounded-md text-xs hover:bg-white/10"
+            >
+              <AeroIcon size={13} /> AeroSim
+            </button>
             <ExportMenu onExport={exportFile} />
             <button
               onClick={clear}
