@@ -18,12 +18,21 @@ import { publishAppState } from '@/ai/screenScanner';
 import { useModelerStore } from '@/store/modelerStore';
 import { useWindowStore } from '@/store/windowStore';
 import { downloadBlob, toBinarySTL } from '@/lib/modeler/exporters';
+import { useLibraryStore, geometryFromJSON } from '@/store/libraryStore';
+import { MATERIALS } from '@/lib/physics2d/materials';
+import { extractSilhouette } from '@/lib/cfd/customShape';
+import { useAerosimStore } from '@/store/aerosimStore';
+import { usePhysicsBenchStore } from '@/store/physicsBenchStore';
+import { makeBody, makePolygonFromVertices } from '@/lib/physics2d/types';
+import { toast } from '@/store/toastStore';
+import { Trash2, Box, Atom, Wind } from 'lucide-react';
 
 function PartsLib({ appId }: { appId: string }) {
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [params, setParams] = useState<Record<string, number>>({});
+  const libraryCount = useLibraryStore((s) => s.models.length);
 
   const filtered = useMemo(() => {
     const list = query ? searchParts(query) : PARTS;
@@ -159,6 +168,20 @@ function PartsLib({ appId }: { appId: string }) {
         >
           All parts
         </button>
+        <button
+          onClick={() => setCategory('__library__')}
+          className={`text-left px-2 py-1 rounded-md text-xs flex items-center gap-1.5 ${
+            category === '__library__'
+              ? 'bg-accent text-white'
+              : 'hover:bg-white/10 text-white/75'
+          }`}
+        >
+          ★ My Library
+          <span className="ml-auto text-white/40 text-[10px]">
+            {libraryCount}
+          </span>
+        </button>
+        <div className="h-px bg-white/10 my-1" />
         {CATEGORIES.map((c) => (
           <button
             key={c.id}
@@ -175,6 +198,10 @@ function PartsLib({ appId }: { appId: string }) {
         ))}
       </div>
 
+      {category === '__library__' ? (
+        <LibraryPanel />
+      ) : (
+      <>
       <div className="flex-1 flex flex-col min-w-0">
         {/* Search */}
         <div className="h-10 px-3 flex items-center gap-2 border-b border-white/10 chrome">
@@ -249,7 +276,196 @@ function PartsLib({ appId }: { appId: string }) {
           </>
         )}
       </div>
+      </>
+      )}
     </div>
+  );
+}
+
+/** Saved-models browser: 3D preview + send to Modeler3D / PhysicsBench / AeroSim. */
+function LibraryPanel() {
+  const models = useLibraryStore((s) => s.models);
+  const remove = useLibraryStore((s) => s.remove);
+  const rename = useLibraryStore((s) => s.rename);
+  const [selId, setSelId] = useState<string | null>(models[0]?.id ?? null);
+  const [material, setMaterial] = useState('plastic');
+
+  const sel = models.find((m) => m.id === selId) ?? null;
+  const geom = useMemo(
+    () => (sel ? geometryFromJSON(sel.geom) : null),
+    [sel],
+  );
+
+  const sendToModeler = () => {
+    if (!sel || !geom) return;
+    useModelerStore.getState().addCustomObject(sel.name, geom.clone(), { color: sel.color });
+    useWindowStore.getState().openApp('modeler3d', { title: 'Modeler3D' });
+    toast.success('Added to Modeler3D', sel.name);
+  };
+
+  const sendToPhysics = () => {
+    if (!sel || !geom) return;
+    const sil = extractSilhouette(geom);
+    if (sil.length < 3) {
+      toast.error('Cannot drop into PhysicsBench', 'No usable 2D cross-section.');
+      return;
+    }
+    const mat = MATERIALS.find((m) => m.id === material) ?? MATERIALS[0];
+    // Scale the unit-ish silhouette up to a sensible world size (~1.4 m span)
+    const verts = sil.map((p) => ({ x: (p.x - 0.5) * 1.4, y: -p.y * 1.4 }));
+    const body = makeBody(makePolygonFromVertices(verts), {
+      pos: { x: 0, y: -4 },
+      density: mat.density,
+      restitution: mat.restitution,
+      friction: mat.friction,
+      color: mat.color,
+      label: sel.name,
+    });
+    usePhysicsBenchStore.getState().mutate((w) => w.add(body));
+    useWindowStore.getState().openApp('physicsbench', { title: 'PhysicsBench' });
+    toast.success('Dropped into PhysicsBench', `${sel.name} as ${mat.label}`);
+  };
+
+  const sendToAero = () => {
+    if (!sel || !geom) return;
+    const sil = extractSilhouette(geom);
+    if (sil.length < 3) {
+      toast.error('Cannot send to AeroSim', 'No usable cross-section.');
+      return;
+    }
+    useAerosimStore.getState().setImported({
+      name: sel.name,
+      silhouette: sil,
+      geometry: geom.clone(),
+    });
+    useWindowStore.getState().openApp('aerosim', { title: 'AeroSim' });
+    toast.success('Sent to AeroSim', `Testing "${sel.name}"`);
+  };
+
+  return (
+    <>
+      <div className="flex-1 flex flex-col min-w-0">
+        <div className="h-10 px-3 flex items-center border-b border-white/10 chrome text-sm text-white/70">
+          My Library — models you saved from Modeler3D
+        </div>
+        <div className="flex-1 overflow-y-auto p-3 grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-3 content-start">
+          {models.length === 0 && (
+            <div className="col-span-full text-center text-white/45 py-10">
+              <div className="text-3xl mb-2">★</div>
+              Nothing saved yet. In Modeler3D, build something and click
+              <span className="text-white/70"> “Save to Library”.</span>
+            </div>
+          )}
+          {models.map((m) => (
+            <button
+              key={m.id}
+              onClick={() => setSelId(m.id)}
+              className={`group rounded-xl overflow-hidden border transition-all text-left ${
+                m.id === selId
+                  ? 'border-accent shadow-lg shadow-accent/20'
+                  : 'border-white/10 hover:border-white/25'
+              } bg-black/35 hover:bg-black/55`}
+            >
+              <div
+                className="h-24 flex items-center justify-center"
+                style={{
+                  background: `radial-gradient(ellipse at 30% 30%, ${m.color}33 0%, transparent 60%), linear-gradient(135deg,#0b1020,#0f172a)`,
+                }}
+              >
+                <Box size={34} style={{ color: m.color }} />
+              </div>
+              <div className="p-2">
+                <div className="text-xs font-medium text-white truncate">{m.name}</div>
+                <div className="text-[10px] text-white/45">
+                  {new Date(m.createdAt).toLocaleDateString()}
+                </div>
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="w-80 shrink-0 border-l border-white/10 bg-black/25 flex flex-col chrome">
+        {!sel ? (
+          <div className="m-auto text-white/45 text-sm">Select a saved model</div>
+        ) : (
+          <>
+            <div className="h-56 border-b border-white/10 relative">
+              <DetailView geometry={geom} color={sel.color} />
+            </div>
+            <div className="p-3 overflow-y-auto flex-1 space-y-3">
+              <input
+                value={sel.name}
+                onChange={(e) => rename(sel.id, e.target.value)}
+                className="w-full bg-white/5 border border-white/10 rounded-md px-2 py-1 text-sm font-semibold outline-none"
+              />
+              <button
+                onClick={sendToModeler}
+                className="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md bg-accent hover:bg-accent-hover text-white text-xs"
+              >
+                <Boxes size={13} /> Open in Modeler3D
+              </button>
+
+              <div className="border-t border-white/10 pt-2.5">
+                <div className="text-[10px] uppercase text-white/45 mb-1.5">
+                  Drop into PhysicsBench as
+                </div>
+                <div className="flex gap-1.5">
+                  <select
+                    value={material}
+                    onChange={(e) => setMaterial(e.target.value)}
+                    className="flex-1 bg-white/5 border border-white/10 rounded-md px-2 py-1 text-xs outline-none"
+                  >
+                    {MATERIALS.map((mt) => (
+                      <option key={mt.id} value={mt.id} className="bg-zinc-800">
+                        {mt.label}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    onClick={sendToPhysics}
+                    className="flex items-center gap-1 px-2 py-1 rounded-md bg-white/10 hover:bg-white/15 text-xs"
+                  >
+                    <Atom size={12} /> Drop
+                  </button>
+                </div>
+              </div>
+
+              <button
+                onClick={sendToAero}
+                className="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md bg-white/10 hover:bg-white/15 text-xs"
+              >
+                <Wind size={13} /> Test in AeroSim
+              </button>
+
+              <div className="flex gap-1.5 pt-1">
+                <button
+                  onClick={() => {
+                    if (!geom) return;
+                    const mesh = new THREE.Mesh(geom);
+                    mesh.updateMatrixWorld(true);
+                    downloadBlob(`${sel.name}.stl`, toBinarySTL([mesh]), 'model/stl');
+                  }}
+                  className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-md bg-white/10 hover:bg-white/15 text-xs"
+                >
+                  <Download size={12} /> STL
+                </button>
+                <button
+                  onClick={() => {
+                    remove(sel.id);
+                    setSelId(null);
+                    toast.info('Removed from Library', sel.name);
+                  }}
+                  className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-md bg-traffic-red/20 hover:bg-traffic-red/40 text-traffic-red text-xs"
+                >
+                  <Trash2 size={12} /> Delete
+                </button>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+    </>
   );
 }
 
@@ -432,22 +648,43 @@ function PartSilhouette({ categoryId, accent }: { categoryId: string; accent: st
   }
 }
 
-function DetailView({ geometry }: { geometry: THREE.BufferGeometry | null }) {
+function DetailView({
+  geometry,
+  color = '#9aa6b8',
+  autoRotate = true,
+}: {
+  geometry: THREE.BufferGeometry | null;
+  color?: string;
+  autoRotate?: boolean;
+}) {
   return (
-    <Canvas camera={{ position: [3, 2.5, 4], fov: 35 }} dpr={[1, 2]}>
-      <color attach="background" args={['#0b1020']} />
-      <ambientLight intensity={0.5} />
-      <directionalLight position={[6, 8, 4]} intensity={1.4} />
-      <directionalLight position={[-4, -4, -6]} intensity={0.4} />
-      <OrbitControls enableDamping autoRotate autoRotateSpeed={0.6} />
+    <Canvas camera={{ position: [3, 2.4, 4], fov: 32 }} dpr={[1, 2]} shadows>
+      <color attach="background" args={['#0a0f1c']} />
+      <fog attach="fog" args={['#0a0f1c', 9, 22]} />
+      <hemisphereLight args={['#cfe0ff', '#1a2438', 0.6]} />
+      <ambientLight intensity={0.25} />
+      <directionalLight position={[5, 8, 4]} intensity={1.5} castShadow />
+      <directionalLight position={[-5, 2, -4]} intensity={0.5} color="#9ec5ff" />
+      <directionalLight position={[0, -3, 5]} intensity={0.3} />
+      <OrbitControls enableDamping autoRotate={autoRotate} autoRotateSpeed={0.9} enablePan={false} />
       {geometry && (
-        <Center>
+        <Center key={geometry.uuid}>
           <mesh geometry={geometry} castShadow receiveShadow>
-            <meshStandardMaterial color="#94a3b8" metalness={0.7} roughness={0.3} />
+            <meshStandardMaterial
+              color={color}
+              metalness={0.55}
+              roughness={0.35}
+              envMapIntensity={0.8}
+            />
           </mesh>
         </Center>
       )}
-      <gridHelper args={[10, 10, '#1f2937', '#1f2937']} position={[0, -1.5, 0]} />
+      {/* soft radial floor */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -1.65, 0]} receiveShadow>
+        <circleGeometry args={[6, 48]} />
+        <meshStandardMaterial color="#0e1626" roughness={1} metalness={0} />
+      </mesh>
+      <gridHelper args={[12, 24, '#243049', '#18213a']} position={[0, -1.64, 0]} />
     </Canvas>
   );
 }

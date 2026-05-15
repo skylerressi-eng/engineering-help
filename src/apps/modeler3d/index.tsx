@@ -22,6 +22,7 @@ import {
   PenLine,
   X as XIcon,
   Undo2,
+  Save,
 } from 'lucide-react';
 import * as THREE from 'three';
 import type { AppModule } from '@/os/types';
@@ -369,6 +370,36 @@ function Modeler3D({ appId }: { appId: string }) {
             )}
           </div>
           <div className="ml-auto flex items-center gap-1">
+            <button
+              onClick={() => {
+                const obj = selected ?? objects[objects.length - 1];
+                if (!obj) {
+                  import('@/store/toastStore').then(({ toast }) =>
+                    toast.warn('Nothing to save', 'Add or select an object first.'),
+                  );
+                  return;
+                }
+                Promise.all([
+                  import('@/store/libraryStore'),
+                  import('@/store/toastStore'),
+                ]).then(([lib, t]) => {
+                  // Bake the object's transform into the saved geometry.
+                  const g = obj.geometry.clone();
+                  const m = new THREE.Matrix4().compose(
+                    new THREE.Vector3(...obj.position),
+                    new THREE.Quaternion().setFromEuler(new THREE.Euler(...obj.rotation)),
+                    new THREE.Vector3(...obj.scale),
+                  );
+                  g.applyMatrix4(m);
+                  lib.useLibraryStore.getState().save(obj.name, g, obj.color);
+                  t.toast.success('Saved to Library', `"${obj.name}" is now in PartsLib → My Library.`);
+                });
+              }}
+              title="Save the selected object to your reusable Library"
+              className="flex items-center gap-1 px-2 h-6 rounded-md text-xs hover:bg-white/10"
+            >
+              <Save size={12} /> Save to Library
+            </button>
             <button
               onClick={() => {
                 const obj = selected ?? objects[objects.length - 1];
