@@ -3,8 +3,21 @@ import { ChevronDown, BarChart3, X, Upload, Play, Pause, RotateCcw, Box } from '
 import { AeroIcon } from '@/apps/icons';
 import type { AppModule } from '@/os/types';
 import { useAerosimStore, type AeroMode, type VizMode } from '@/store/aerosimStore';
-import { AIRFOILS, type AirfoilId } from '@/lib/cfd/naca';
+import {
+  AIRFOILS,
+  type AirfoilId,
+  generateAirfoil,
+  naca4Custom,
+  placeShape,
+} from '@/lib/cfd/naca';
+import { makeFlowField } from '@/lib/cfd/potential';
+import type { Vec2 } from '@/lib/physics2d/math';
 import { aero } from '@/lib/cfd/aero';
+
+const presetVerts = (id: AirfoilId): Vec2[] => generateAirfoil(id, 60);
+const nacaFor = (m: number, p: number, t: number): Vec2[] => naca4Custom(m, p, t, 60);
+const placeShapeLite = (v: Vec2[], chord: number, aoa: number): Vec2[] =>
+  placeShape(v, { x: 0, y: 0 }, chord, aoa);
 import { useAppTools } from '@/hooks/useToolRegistry';
 import { publishAppState } from '@/ai/screenScanner';
 import { parseOBJ, extractSilhouette } from '@/lib/cfd/customShape';
@@ -322,6 +335,24 @@ function AeroSim({ appId }: { appId: string }) {
           <div>Re <span className="text-accent">{results.re.toExponential(2)}</span></div>
         </div>
 
+        {/* Velocity colorbar */}
+        <div className="absolute bottom-3 left-3 glass-strong rounded-md px-2 py-1.5 pointer-events-none">
+          <div className="text-[9px] uppercase tracking-wide text-white/55 mb-1">
+            Flow speed
+          </div>
+          <div
+            className="w-36 h-2.5 rounded-full"
+            style={{
+              background:
+                'linear-gradient(90deg, #334dd9 0%, #22d3ee 28%, #33c761 52%, #f5b329 75%, #ef4438 100%)',
+            }}
+          />
+          <div className="flex justify-between text-[9px] text-white/45 font-mono mt-0.5">
+            <span>slow</span>
+            <span>fast</span>
+          </div>
+        </div>
+
         {/* Sweep popup */}
         {sweep && <SweepPanel onClose={() => setSweep(null)} />}
       </div>
@@ -445,10 +476,95 @@ function AeroSim({ appId }: { appId: string }) {
             )}
           </div>
 
+          <CpPlot />
+
+          <div className="border-t border-white/10 pt-3">
+            <div className="text-[10px] uppercase text-white/45 mb-1.5">
+              Surface Cp legend
+            </div>
+            <div
+              className="h-3 rounded-full"
+              style={{
+                background:
+                  'linear-gradient(90deg, #2e6bed 0%, #7aa8ee 35%, #ededed 50%, #edb04a 70%, #ed4438 100%)',
+              }}
+            />
+            <div className="flex justify-between text-[10px] text-white/45 font-mono mt-0.5">
+              <span>−Cp (suction)</span>
+              <span>+Cp (stagnation)</span>
+            </div>
+          </div>
+
           <SweepButton />
         </div>
       </div>
       </div>
+    </div>
+  );
+}
+
+function CpPlot() {
+  const V = useAerosimStore((s) => s.V);
+  const aoaDeg = useAerosimStore((s) => s.aoaDeg);
+  const chord = useAerosimStore((s) => s.chord);
+  const source = useAerosimStore((s) => s.source);
+  const airfoil = useAerosimStore((s) => s.airfoil);
+  const customM = useAerosimStore((s) => s.customM);
+  const customP = useAerosimStore((s) => s.customP);
+  const customT = useAerosimStore((s) => s.customT);
+  const imported = useAerosimStore((s) => s.imported);
+
+  const { upper, lower, cpMin } = useMemo(() => {
+    const verts =
+      source === 'import' && imported?.silhouette.length
+        ? imported.silhouette
+        : source === 'naca'
+          ? nacaFor(customM, customP, customT)
+          : presetVerts(airfoil);
+    const aoa = (aoaDeg * Math.PI) / 180;
+    const isCyl = source === 'preset' && airfoil === 'cylinder';
+    const field = makeFlowField({ V, aoa, chord, isCylinder: isCyl, center: { x: 0, y: 0 } });
+    const placed = placeShapeLite(verts, chord, aoa);
+    const up: { x: number; cp: number }[] = [];
+    const lo: { x: number; cp: number }[] = [];
+    let mn = 1;
+    for (const p of placed) {
+      const vv = field.velocity({ x: p.x * 1.04, y: p.y * 1.04 });
+      const sp = Math.hypot(vv.x, vv.y);
+      const cp = Math.max(-3, Math.min(1, 1 - (sp / Math.max(0.001, V)) ** 2));
+      mn = Math.min(mn, cp);
+      const xc = (p.x + chord * 0.25) / chord;
+      (p.y >= 0 ? up : lo).push({ x: Math.max(0, Math.min(1, xc)), cp });
+    }
+    up.sort((a, b) => a.x - b.x);
+    lo.sort((a, b) => a.x - b.x);
+    return { upper: up, lower: lo, cpMin: mn };
+  }, [V, aoaDeg, chord, source, airfoil, customM, customP, customT, imported]);
+
+  const W = 224;
+  const H = 110;
+  const PAD = 16;
+  // Cp axis inverted (aero convention: −Cp up)
+  const cpHi = 1;
+  const cpLo = Math.min(-3, Math.floor(cpMin));
+  const xp = (xc: number) => PAD + xc * (W - 2 * PAD);
+  const yp = (cp: number) => PAD + ((cp - cpHi) / (cpLo - cpHi)) * (H - 2 * PAD);
+  const path = (pts: { x: number; cp: number }[]) =>
+    pts.map((p, i) => `${i === 0 ? 'M' : 'L'} ${xp(p.x).toFixed(1)},${yp(p.cp).toFixed(1)}`).join(' ');
+
+  return (
+    <div className="border-t border-white/10 pt-3">
+      <div className="text-[10px] uppercase text-white/45 mb-1.5">Cp vs x/c</div>
+      <svg width="100%" viewBox={`0 0 ${W} ${H}`} className="bg-black/30 rounded-md">
+        <line x1={PAD} y1={yp(0)} x2={W - PAD} y2={yp(0)} stroke="rgba(255,255,255,0.18)" strokeDasharray="3 3" />
+        <line x1={PAD} y1={PAD} x2={PAD} y2={H - PAD} stroke="rgba(255,255,255,0.25)" />
+        <line x1={PAD} y1={H - PAD} x2={W - PAD} y2={H - PAD} stroke="rgba(255,255,255,0.25)" />
+        <path d={path(upper)} fill="none" stroke="#22d3ee" strokeWidth={1.4} />
+        <path d={path(lower)} fill="none" stroke="#f59e0b" strokeWidth={1.4} />
+        <text x={PAD + 2} y={PAD + 2} fill="#22d3ee" fontSize={8} fontFamily="monospace">upper</text>
+        <text x={PAD + 36} y={PAD + 2} fill="#f59e0b" fontSize={8} fontFamily="monospace">lower</text>
+        <text x={W - PAD} y={H - PAD + 10} fill="rgba(255,255,255,0.45)" fontSize={8} fontFamily="monospace" textAnchor="end">x/c</text>
+      </svg>
     </div>
   );
 }
