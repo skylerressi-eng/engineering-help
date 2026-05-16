@@ -242,17 +242,20 @@ function FEAForge({ appId }: { appId: string }) {
             />
             deformed
           </label>
-          <span className="ml-2 text-[11px] text-white/55">×</span>
-          <input
-            type="range"
-            min={1}
-            max={2000}
-            step={10}
-            value={dispScale}
-            onChange={(e) => setDispScale(parseFloat(e.target.value))}
-            className="w-24"
-          />
-          <span className="text-[11px] font-mono w-10">{dispScale}</span>
+          <span className="ml-2 text-[11px] text-white/55">exaggerate</span>
+          {[0.25, 1, 3, 10].map((f) => (
+            <button
+              key={f}
+              onClick={() => setDispScale(dispScale * f)}
+              className="px-1.5 h-6 rounded-md text-[11px] hover:bg-white/10 text-white/70"
+              title="Multiply the deformed-shape scale"
+            >
+              ×{f}
+            </button>
+          ))}
+          <span className="text-[10px] font-mono text-white/40 w-16">
+            {dispScale > 999 ? dispScale.toExponential(1) : dispScale.toFixed(0)}
+          </span>
           <div className="relative ml-2">
             <button
               onClick={() => setPresetsOpen((o) => !o)}

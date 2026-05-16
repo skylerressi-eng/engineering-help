@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, GizmoHelper, GizmoViewport } from '@react-three/drei';
 import * as THREE from 'three';
@@ -276,9 +276,10 @@ function DataViz({ appId }: { appId: string }) {
             onClick={() => fileRef.current?.click()}
             className="w-full flex items-center justify-center gap-1 px-2 py-1 rounded-md bg-white/10 hover:bg-white/15 text-xs"
           >
-            <Upload size={12} /> Import CSV (x,y,z,scalar)
+            <Upload size={12} /> Import CSV file
           </button>
           <input ref={fileRef} type="file" accept=".csv,.txt" hidden onChange={onCSV} />
+          <ManualEntry />
         </div>
 
         <div className="p-3 border-b border-white/10 space-y-2">
@@ -361,6 +362,52 @@ function DataViz({ appId }: { appId: string }) {
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+function ManualEntry() {
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState('x, y, z, value\n0,0,0,1\n1,0,0,0.5\n0,1,0,0.7\n1,1,1,0.2');
+  const setDataset = useVizStore((s) => s.setDataset);
+  return (
+    <div>
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="w-full flex items-center justify-center gap-1 px-2 py-1 rounded-md bg-white/10 hover:bg-white/15 text-xs"
+      >
+        ✎ Enter data manually
+      </button>
+      {open && (
+        <div className="mt-2 space-y-1.5">
+          <div className="text-[10px] text-white/45">
+            One point per line: <span className="font-mono">x,y,z,value</span> (header optional)
+          </div>
+          <textarea
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            spellCheck={false}
+            rows={7}
+            className="w-full bg-black/40 border border-white/10 rounded-md p-2 font-mono text-[11px] outline-none resize-y"
+          />
+          <button
+            onClick={async () => {
+              const { parseCSV } = await import('@/lib/viz/datasets');
+              const { toast } = await import('@/store/toastStore');
+              const ds = parseCSV(text);
+              if (ds.points.length < 1) {
+                toast.error('No data', 'Need at least one "x,y,z[,value]" row.');
+                return;
+              }
+              setDataset({ ...ds, name: 'Manual entry' });
+              toast.success('Loaded', `${ds.points.length} points`);
+            }}
+            className="w-full px-2 py-1 rounded-md bg-accent hover:bg-accent-hover text-white text-xs"
+          >
+            Load these points
+          </button>
+        </div>
+      )}
     </div>
   );
 }

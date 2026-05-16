@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 import {
   Box,
   Circle as CircleIcon,
@@ -17,6 +17,7 @@ import {
   EyeOff,
   Plus,
   Download,
+  Upload,
   ChevronRight,
   ChevronDown,
   PenLine,
@@ -408,6 +409,7 @@ function Modeler3D({ appId }: { appId: string }) {
             >
               <AeroIcon size={13} /> AeroSim
             </button>
+            <ImportObjButton />
             <ExportMenu onExport={exportFile} />
             <button
               onClick={clear}
@@ -576,6 +578,47 @@ function BooleanMenu() {
         </div>
       )}
     </div>
+  );
+}
+
+function ImportObjButton() {
+  const ref = useRef<HTMLInputElement>(null);
+  const onFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    try {
+      const [{ parseOBJ }, t] = await Promise.all([
+        import('@/lib/cfd/customShape'),
+        import('@/store/toastStore'),
+      ]);
+      const geom = parseOBJ(await f.text());
+      if (!geom.getAttribute('position') || geom.getAttribute('position').count < 3) {
+        t.toast.error('Import failed', 'No geometry found in that .obj.');
+        return;
+      }
+      geom.center();
+      useModelerStore
+        .getState()
+        .addCustomObject(f.name.replace(/\.obj$/i, ''), geom, { color: '#9aa6b8' });
+      t.toast.success('Imported', f.name);
+    } catch (err) {
+      const { toast } = await import('@/store/toastStore');
+      toast.error('Import failed', (err as Error).message);
+    } finally {
+      e.target.value = '';
+    }
+  };
+  return (
+    <>
+      <button
+        onClick={() => ref.current?.click()}
+        className="flex items-center gap-1 px-2 h-6 rounded-md text-xs hover:bg-white/10"
+        title="Import a .obj model into the scene"
+      >
+        <Upload size={12} /> Import
+      </button>
+      <input ref={ref} type="file" accept=".obj" hidden onChange={onFile} />
+    </>
   );
 }
 

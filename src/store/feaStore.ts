@@ -135,7 +135,7 @@ export const useFeaStore = create<FeaStore>((set, get) => ({
 
   select: (id) => set({ selectedNode: id }),
   setShowDeformed: (b) => set({ showDeformed: b }),
-  setDispScale: (n) => set({ dispScale: Math.max(1, Math.min(5000, n)) }),
+  setDispScale: (n) => set({ dispScale: Math.max(1, Math.min(1e7, n)) }),
   setE: (e) => set({ E: e }),
   setArea: (a) => set({ area: a }),
 
@@ -155,6 +155,12 @@ export const useFeaStore = create<FeaStore>((set, get) => ({
 
   solve: () => {
     const r = solveTruss(get().model);
+    // Auto-fit the deformed-shape scale so the largest displacement draws as
+    // ~0.6 m on the model (real truss deflections are sub-millimetre, so a
+    // fixed scale made the deformation invisible).
+    if (!r.unstable && r.maxDisp > 0) {
+      set({ dispScale: Math.max(1, Math.min(1e7, 0.6 / r.maxDisp)) });
+    }
     set({ result: r });
     return r;
   },
