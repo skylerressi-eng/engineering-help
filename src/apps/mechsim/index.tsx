@@ -90,13 +90,46 @@ function StructuralTab() {
         <Num label="P (N)" value={P} onChange={setP} step={100} />
         <Num label="a (m)" value={a} onChange={setA} step={0.1} />
         <Num label="w (N/m)" value={w} onChange={setW} step={50} />
-        <div className="pt-2 text-[11px] font-mono text-white/65 space-y-0.5">
-          <div>R₀ {(res.reactions.R0 / 1000).toFixed(2)} kN</div>
-          {res.reactions.M0 !== undefined && (
-            <div>M₀ {(res.reactions.M0 / 1000).toFixed(2)} kN·m</div>
-          )}
-          {res.reactions.RL !== undefined && (
-            <div>R_L {(res.reactions.RL / 1000).toFixed(2)} kN</div>
+        <div className="pt-2 border-t border-white/10 mt-1">
+          <div className="text-[10px] uppercase text-white/45 mb-1">Results</div>
+          <div className="text-[11px] font-mono text-white/80 space-y-0.5">
+            <div className="flex justify-between">
+              <span className="text-white/55">max δ</span>
+              <span>{(res.maxDeflection * 1000).toFixed(3)} mm</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-white/55">max M</span>
+              <span>{(res.maxMoment / 1000).toFixed(2)} kN·m</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-white/55">max σ</span>
+              <span
+                className={res.maxStress > 250e6 ? 'text-traffic-red' : 'text-emerald-300'}
+              >
+                {(res.maxStress / 1e6).toFixed(1)} MPa
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-white/55">R₀</span>
+              <span>{(res.reactions.R0 / 1000).toFixed(2)} kN</span>
+            </div>
+            {res.reactions.M0 !== undefined && (
+              <div className="flex justify-between">
+                <span className="text-white/55">M₀</span>
+                <span>{(res.reactions.M0 / 1000).toFixed(2)} kN·m</span>
+              </div>
+            )}
+            {res.reactions.RL !== undefined && (
+              <div className="flex justify-between">
+                <span className="text-white/55">R_L</span>
+                <span>{(res.reactions.RL / 1000).toFixed(2)} kN</span>
+              </div>
+            )}
+          </div>
+          {res.maxStress > 250e6 && (
+            <div className="mt-1 text-[10px] text-traffic-red">
+              ⚠ exceeds ~250 MPa yield (mild steel)
+            </div>
           )}
         </div>
       </div>
@@ -135,10 +168,14 @@ function ThermalTab() {
   useEffect(() => {
     const c = canvasRef.current;
     if (!c) return;
-    const ctx = c.getContext('2d')!;
     const { nx, ny, T, min, max } = result;
     const span = max - min || 1;
-    const img = ctx.createImageData(nx, ny);
+    // Build the field on a small offscreen buffer...
+    const off = document.createElement('canvas');
+    off.width = nx;
+    off.height = ny;
+    const octx = off.getContext('2d')!;
+    const img = octx.createImageData(nx, ny);
     const col = { r: 0, g: 0, b: 0 };
     for (let idx = 0; idx < nx * ny; idx++) {
       sampleColormap('turbo', (T[idx] - min) / span, col);
@@ -147,9 +184,16 @@ function ThermalTab() {
       img.data[idx * 4 + 2] = col.b * 255;
       img.data[idx * 4 + 3] = 255;
     }
-    c.width = nx;
-    c.height = ny;
-    ctx.putImageData(img, 0, 0);
+    octx.putImageData(img, 0, 0);
+    // ...then draw it smoothly upscaled onto the visible canvas for a crisp,
+    // interpolated heat map instead of a blurry 90×70 bitmap.
+    const SCALE = 9;
+    c.width = nx * SCALE;
+    c.height = ny * SCALE;
+    const ctx = c.getContext('2d')!;
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(off, 0, 0, nx, ny, 0, 0, c.width, c.height);
   }, [result]);
 
   return (
