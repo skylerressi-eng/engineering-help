@@ -76,14 +76,33 @@ interface UIStore {
   setTheme: (t: 'dark' | 'light') => void;
 }
 
+const WP_KEY = 'engos.wallpaper.v1';
+
+function loadWallpaper(): WallpaperId {
+  try {
+    const v = localStorage.getItem(WP_KEY) as WallpaperId | null;
+    if (v && WALLPAPERS.some((w) => w.id === v)) return v;
+  } catch {
+    /* ignore */
+  }
+  return 'aurora';
+}
+
 export const useUIStore = create<UIStore>((set) => ({
   booted: false,
-  wallpaper: 'aurora',
+  wallpaper: loadWallpaper(),
   spotlightOpen: false,
   theme: 'dark',
 
   setBooted: (b) => set({ booted: b }),
-  setWallpaper: (id) => set({ wallpaper: id }),
+  setWallpaper: (id) => {
+    try {
+      localStorage.setItem(WP_KEY, id);
+    } catch {
+      /* ignore quota */
+    }
+    set({ wallpaper: id });
+  },
   openSpotlight: () => set({ spotlightOpen: true }),
   closeSpotlight: () => set({ spotlightOpen: false }),
   toggleSpotlight: () => set((s) => ({ spotlightOpen: !s.spotlightOpen })),

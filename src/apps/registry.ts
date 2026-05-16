@@ -8,6 +8,7 @@ import physicsbench from './physicsbench';
 import aerosim from './aerosim';
 import modeler3d from './modeler3d';
 import circuitsim from './circuitsim';
+import pcbdesign from './pcbdesign';
 import partslib from './partslib';
 import settings from './settings';
 import conway from './conway';
@@ -15,6 +16,7 @@ import conway from './conway';
 export const APPS: Record<string, AppModule> = {
   [logiclab.manifest.id]: logiclab,
   [circuitsim.manifest.id]: circuitsim,
+  [pcbdesign.manifest.id]: pcbdesign,
   [physicsbench.manifest.id]: physicsbench,
   [aerosim.manifest.id]: aerosim,
   [modeler3d.manifest.id]: modeler3d,
