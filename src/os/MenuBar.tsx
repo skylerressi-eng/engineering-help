@@ -86,9 +86,9 @@ export default function MenuBar() {
                     ),
                 },
                 'sep',
-                { label: 'Sleep', action: () => {} },
+                { label: 'Sleep', action: () => useUIStore.getState().setPower('sleep') },
                 { label: 'Restart', action: () => location.reload() },
-                { label: 'Shut Down…', action: () => {} },
+                { label: 'Shut Down…', action: () => useUIStore.getState().setPower('off') },
               ].map((it, i) =>
                 it === 'sep' ? (
                   <div key={i} className="my-1 h-px bg-white/10" />
@@ -109,11 +109,14 @@ export default function MenuBar() {
           )}
         </div>
         <div className="font-semibold">{activeName}</div>
-        <div className="opacity-60 hidden sm:block">File</div>
-        <div className="opacity-60 hidden sm:block">Edit</div>
-        <div className="opacity-60 hidden sm:block">View</div>
-        <div className="opacity-60 hidden sm:block">Window</div>
-        <div className="opacity-60 hidden sm:block">Help</div>
+        <WindowMenu />
+        <button
+          onClick={() => useAiStore.getState().openChat()}
+          className="opacity-70 hover:opacity-100 hover:bg-white/15 rounded px-1.5 hidden sm:block transition-opacity"
+          title="Ask EngOS AI for help"
+        >
+          Help
+        </button>
       </div>
 
       {/* Right section */}
@@ -138,6 +141,70 @@ export default function MenuBar() {
           <span className="font-medium">{time}</span>
         </div>
       </div>
+    </div>
+  );
+}
+
+function WindowMenu() {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const windows = useWindowStore((s) => s.windows);
+  const focusWindow = useWindowStore((s) => s.focusWindow);
+  const minimizeWindow = useWindowStore((s) => s.minimizeWindow);
+  const closeWindow = useWindowStore((s) => s.closeWindow);
+  useEffect(() => {
+    const onDown = (e: MouseEvent) => {
+      if (open && ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    window.addEventListener('mousedown', onDown);
+    return () => window.removeEventListener('mousedown', onDown);
+  }, [open]);
+  return (
+    <div ref={ref} className="relative hidden sm:block">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="opacity-70 hover:opacity-100 hover:bg-white/15 rounded px-1.5 transition-opacity"
+      >
+        Window
+      </button>
+      {open && (
+        <div className="absolute top-full left-0 mt-1 glass-strong glass-edge rounded-lg py-1 min-w-[220px] shadow-window">
+          {windows.length === 0 && (
+            <div className="px-3 py-1.5 text-xs text-white/45">No open windows</div>
+          )}
+          {windows.map((w) => {
+            const app = getApp(w.appId);
+            return (
+              <div key={w.id} className="flex items-center group hover:bg-white/10">
+                <button
+                  onClick={() => {
+                    focusWindow(w.id);
+                    setOpen(false);
+                  }}
+                  className="flex-1 text-left px-3 py-1.5 text-sm truncate"
+                >
+                  {w.minimized ? '• ' : ''}
+                  {app?.manifest.name ?? w.title}
+                </button>
+                <button
+                  onClick={() => minimizeWindow(w.id)}
+                  title="Minimize"
+                  className="opacity-0 group-hover:opacity-100 px-1.5 text-white/55 hover:text-white"
+                >
+                  –
+                </button>
+                <button
+                  onClick={() => closeWindow(w.id)}
+                  title="Close"
+                  className="opacity-0 group-hover:opacity-100 px-2 text-white/55 hover:text-traffic-red"
+                >
+                  ×
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

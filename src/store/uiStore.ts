@@ -62,11 +62,14 @@ export const WALLPAPERS: WallpaperPreset[] = [
   },
 ];
 
+export type PowerState = 'on' | 'sleep' | 'off';
+
 interface UIStore {
   booted: boolean;
   wallpaper: WallpaperId;
   spotlightOpen: boolean;
   theme: 'dark' | 'light';
+  power: PowerState;
 
   setBooted: (b: boolean) => void;
   setWallpaper: (id: WallpaperId) => void;
@@ -74,6 +77,7 @@ interface UIStore {
   closeSpotlight: () => void;
   toggleSpotlight: () => void;
   setTheme: (t: 'dark' | 'light') => void;
+  setPower: (p: PowerState) => void;
 }
 
 const WP_KEY = 'engos.wallpaper.v1';
@@ -93,8 +97,10 @@ export const useUIStore = create<UIStore>((set) => ({
   wallpaper: loadWallpaper(),
   spotlightOpen: false,
   theme: 'dark',
+  power: 'on',
 
   setBooted: (b) => set({ booted: b }),
+  setPower: (p) => set({ power: p }),
   setWallpaper: (id) => {
     try {
       localStorage.setItem(WP_KEY, id);

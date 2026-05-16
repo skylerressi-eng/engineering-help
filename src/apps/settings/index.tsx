@@ -271,23 +271,69 @@ function AIPane() {
   );
 }
 
+/** The genuine shortcuts wired in App.tsx + app canvases. */
+const SHORTCUT_GROUPS: { group: string; items: [string, string][] }[] = [
+  {
+    group: 'System',
+    items: [
+      ['⌘ / Ctrl + K', 'Open Spotlight'],
+      ['⌘ / Ctrl + Space', 'Open Spotlight'],
+      ['⌘ / Ctrl + I', 'Toggle EngOS AI'],
+      ['⌘ / Ctrl + W', 'Close focused window'],
+      ['⌘ / Ctrl + M', 'Minimize focused window'],
+      ['Esc', 'Close Spotlight / cancel'],
+    ],
+  },
+  {
+    group: 'Modeler3D',
+    items: [
+      ['G', 'Move tool'],
+      ['R', 'Rotate tool'],
+      ['S', 'Scale tool'],
+      ['Del', 'Delete selected'],
+      ['⌘ / Ctrl + D', 'Duplicate selected'],
+    ],
+  },
+  {
+    group: 'LogicLab / CircuitSim / PCBForge',
+    items: [
+      ['Drag from pin', 'Start a wire / trace'],
+      ['Shift-click wire', 'Delete wire / trace'],
+      ['Del', 'Delete selected component'],
+      ['Esc', 'Cancel active wire'],
+    ],
+  },
+  {
+    group: 'FEAForge',
+    items: [
+      ['Esc', 'Cancel element draw'],
+      ['Del', 'Delete selected node'],
+    ],
+  },
+];
+
 function ShortcutsPane() {
-  const bindings = useSettingsStore((s) => s.bindings);
-  const setBinding = useSettingsStore((s) => s.setBinding);
   return (
-    <div className="space-y-3 max-w-md">
+    <div className="space-y-4 max-w-md">
       <PaneTitle>Keyboard shortcuts</PaneTitle>
       <div className="text-[12px] text-white/55">
-        Bindings are stored as labels for reference — the actual handlers are wired in App.tsx.
+        These are the live shortcuts handled by EngOS — try them anywhere.
       </div>
-      {bindings.map((b) => (
-        <div key={b.id} className="flex items-center gap-2">
-          <div className="flex-1 text-sm">{b.label}</div>
-          <input
-            value={b.combo}
-            onChange={(e) => setBinding(b.id, e.target.value)}
-            className="bg-white/5 border border-white/10 rounded-md px-2 py-1 font-mono text-sm outline-none w-32 text-center"
-          />
+      {SHORTCUT_GROUPS.map((g) => (
+        <div key={g.group}>
+          <div className="text-[10px] uppercase tracking-wide text-white/45 mb-1.5">
+            {g.group}
+          </div>
+          <div className="space-y-1">
+            {g.items.map(([keys, label]) => (
+              <div key={keys} className="flex items-center gap-3 text-sm">
+                <kbd className="font-mono text-[11px] bg-white/10 border border-white/15 rounded px-2 py-0.5 min-w-[120px] text-center">
+                  {keys}
+                </kbd>
+                <span className="text-white/75">{label}</span>
+              </div>
+            ))}
+          </div>
         </div>
       ))}
     </div>

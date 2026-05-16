@@ -7,6 +7,7 @@ import Spotlight from '@/os/Spotlight';
 import BootScreen from '@/os/BootScreen';
 import MobileFallback from '@/os/MobileFallback';
 import Toaster from '@/os/Toaster';
+import PowerOverlay from '@/os/PowerOverlay';
 import AiChat from '@/ai/AiChat';
 import AiFloatingButton from '@/ai/AiFloatingButton';
 import { useWindowStore } from '@/store/windowStore';
@@ -83,6 +84,7 @@ export default function App() {
       <Spotlight />
 
       <Toaster />
+      <PowerOverlay />
 
       {!booted && <BootScreen />}
       <MobileFallback />

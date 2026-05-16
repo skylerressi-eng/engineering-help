@@ -203,6 +203,21 @@ function TrashIcon({
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const size = useIconSize(mouseX, ref, iconBase, iconMax);
+  const windows = useWindowStore((s) => s.windows);
+  const closeWindow = useWindowStore((s) => s.closeWindow);
+  const onTrash = () => {
+    if (windows.length === 0) {
+      import('@/store/toastStore').then(({ toast }) =>
+        toast.info('Trash', 'No open windows to clear.'),
+      );
+      return;
+    }
+    const n = windows.length;
+    windows.forEach((w) => closeWindow(w.id));
+    import('@/store/toastStore').then(({ toast }) =>
+      toast.success('Desktop cleared', `Closed ${n} window${n === 1 ? '' : 's'}.`),
+    );
+  };
   return (
     <div
       ref={ref}
@@ -210,10 +225,11 @@ function TrashIcon({
       style={{ width: iconMax, height: iconMax }}
     >
       <motion.button
+        onClick={onTrash}
         style={{ width: size, height: size, borderRadius: '26%' }}
         whileTap={{ scale: 0.92 }}
         className="relative flex items-center justify-center bg-white/8 border border-white/15 backdrop-blur-md overflow-hidden"
-        title="Trash"
+        title="Trash — clear all open windows"
       >
         <div
           className="absolute inset-x-0 top-0 h-1/2 pointer-events-none"
