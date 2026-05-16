@@ -3,7 +3,6 @@ import { AnimatePresence, motion } from 'framer-motion';
 import {
   Sparkles,
   Send,
-  Paperclip,
   ScanLine,
   PlusCircle,
   X,
@@ -492,13 +491,6 @@ function ChatInput({ pending }: { pending: boolean }) {
           className="text-white/70 hover:text-white disabled:opacity-40 p-1 rounded-md hover:bg-white/10"
         >
           <ScanLine size={15} />
-        </button>
-        <button
-          title="Attach (coming soon)"
-          disabled
-          className="text-white/30 p-1 rounded-md cursor-not-allowed"
-        >
-          <Paperclip size={15} />
         </button>
         <textarea
           ref={taRef}

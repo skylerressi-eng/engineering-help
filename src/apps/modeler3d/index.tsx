@@ -27,11 +27,7 @@ import {
 import * as THREE from 'three';
 import type { AppModule } from '@/os/types';
 import ModelerViewport from './Viewport';
-import {
-  useModelerStore,
-  type EditMode,
-  type SceneObject,
-} from '@/store/modelerStore';
+import { useModelerStore, type SceneObject } from '@/store/modelerStore';
 import type { PrimitiveType } from '@/lib/modeler/primitives';
 import type { Modifier, ModifierKind } from '@/lib/modeler/modifiers';
 import { useAppTools } from '@/hooks/useToolRegistry';
@@ -44,8 +40,6 @@ function Modeler3D({ appId }: { appId: string }) {
   const objects = useModelerStore((s) => s.objects);
   const selectedId = useModelerStore((s) => s.selectedId);
   const transformMode = useModelerStore((s) => s.transformMode);
-  const editMode = useModelerStore((s) => s.editMode);
-  const setEditMode = useModelerStore((s) => s.setEditMode);
   const setTransformMode = useModelerStore((s) => s.setTransformMode);
   const select = useModelerStore((s) => s.select);
   const addPrimitive = useModelerStore((s) => s.addPrimitive);
@@ -69,11 +63,7 @@ function Modeler3D({ appId }: { appId: string }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (document.activeElement?.tagName === 'INPUT') return;
-      if (e.key === '1') setEditMode('object');
-      else if (e.key === '2') setEditMode('vertex');
-      else if (e.key === '3') setEditMode('edge');
-      else if (e.key === '4') setEditMode('face');
-      else if (e.key.toLowerCase() === 'g') setTransformMode('translate');
+      if (e.key.toLowerCase() === 'g') setTransformMode('translate');
       else if (e.key.toLowerCase() === 'r') setTransformMode('rotate');
       else if (e.key.toLowerCase() === 's') setTransformMode('scale');
       else if (e.key === 'Delete' && selectedId) remove(selectedId);
@@ -84,12 +74,12 @@ function Modeler3D({ appId }: { appId: string }) {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [selectedId, remove, duplicate, setEditMode, setTransformMode]);
+  }, [selectedId, remove, duplicate, setTransformMode]);
 
   // Publish state for AI scanner
   useEffect(() => {
     return publishAppState(appId, () => ({
-      summary: `Modeler3D has ${objects.length} object(s). Mode: ${editMode}, transform: ${transformMode}. ${selected ? `Selected: ${selected.name} (${selected.kind})` : 'No selection.'}`,
+      summary: `Modeler3D has ${objects.length} object(s). Transform: ${transformMode}. ${selected ? `Selected: ${selected.name} (${selected.kind})` : 'No selection.'}`,
       state: {
         objects: objects.map((o) => ({
           id: o.id,
@@ -103,10 +93,9 @@ function Modeler3D({ appId }: { appId: string }) {
           modifiers: o.modifiers,
         })),
         selectedId,
-        editMode,
       },
     }));
-  }, [appId, objects, selectedId, editMode, transformMode, selected]);
+  }, [appId, objects, selectedId, transformMode, selected]);
 
   // AI tools
   useAppTools(appId, [
@@ -317,7 +306,11 @@ function Modeler3D({ appId }: { appId: string }) {
     <div className="flex h-full">
       {/* Left tool rail */}
       <div className="w-12 shrink-0 border-r border-white/10 bg-black/25 flex flex-col items-center py-2 gap-1 chrome">
-        <ToolBtn active={editMode === 'object'} title="Select (1)" onClick={() => setEditMode('object')}>
+        <ToolBtn
+          active={!selectedId}
+          title="Deselect"
+          onClick={() => select(null)}
+        >
           <MousePointer2 size={15} />
         </ToolBtn>
         <ToolBtn
@@ -350,25 +343,6 @@ function Modeler3D({ appId }: { appId: string }) {
           <BooleanMenu />
           <SketchButton />
           <PresetMenu3D />
-          <div className="ml-2 flex items-center gap-1">
-            {(['object', 'vertex', 'edge', 'face'] as EditMode[]).map((m) => (
-              <button
-                key={m}
-                onClick={() => setEditMode(m)}
-                className={`px-2 h-6 rounded-md text-[11px] ${
-                  editMode === m ? 'bg-accent text-white' : 'hover:bg-white/10 text-white/65'
-                }`}
-                title={`${m} mode`}
-              >
-                {m}
-              </button>
-            ))}
-            {editMode !== 'object' && (
-              <span className="text-[10px] text-white/45 ml-1">
-                edit ops coming soon
-              </span>
-            )}
-          </div>
           <div className="ml-auto flex items-center gap-1">
             <button
               onClick={() => {

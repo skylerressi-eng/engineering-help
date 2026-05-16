@@ -407,11 +407,8 @@ function FEAForge({ appId }: { appId: string }) {
                 onTool={() => {
                   if (tool === 'support') toggleSupport(nd.id);
                   else if (tool === 'load') {
-                    const v = prompt('Load Fx,Fy in N (e.g. 0,-5000)', '0,-5000');
-                    if (v) {
-                      const [fx, fy] = v.split(',').map(Number);
-                      setLoad(nd.id, fx || 0, fy || 0);
-                    }
+                    // select the node — the load is edited inline in the panel
+                    select(nd.id);
                   } else if (tool === 'element') {
                     if (elementFrom) finishElement(nd.id);
                     else beginElement(nd.id);
@@ -426,6 +423,7 @@ function FEAForge({ appId }: { appId: string }) {
 
       {/* results panel */}
       <div className="w-60 shrink-0 border-l border-white/10 bg-black/25 flex flex-col chrome overflow-y-auto">
+        <SelectedNodePanel />
         <div className="p-3 border-b border-white/10">
           <div className="text-[10px] uppercase text-white/45 mb-2">Results</div>
           {!result ? (
@@ -471,6 +469,69 @@ function FEAForge({ appId }: { appId: string }) {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function SelectedNodePanel() {
+  const selectedNode = useFeaStore((s) => s.selectedNode);
+  const node = useFeaStore((s) => s.model.nodes.find((n) => n.id === selectedNode));
+  const load = useFeaStore((s) =>
+    s.model.loads.find((l) => l.node === selectedNode),
+  );
+  const setLoad = useFeaStore((s) => s.setLoad);
+  const toggleSupport = useFeaStore((s) => s.toggleSupport);
+  const removeNode = useFeaStore((s) => s.removeNode);
+  if (!node) {
+    return (
+      <div className="p-3 border-b border-white/10 text-xs text-white/45">
+        Select a node to edit its support &amp; load.
+      </div>
+    );
+  }
+  const fx = load?.fx ?? 0;
+  const fy = load?.fy ?? 0;
+  const fixed = node.fixX || node.fixY;
+  return (
+    <div className="p-3 border-b border-white/10 space-y-2">
+      <div className="text-[10px] uppercase text-white/45">
+        Node {node.id} · {node.x.toFixed(2)}, {node.y.toFixed(2)} m
+      </div>
+      <button
+        onClick={() => toggleSupport(node.id)}
+        className={`w-full px-2 py-1 rounded-md text-xs ${
+          fixed ? 'bg-emerald-500/30 text-emerald-300' : 'bg-white/10 hover:bg-white/15'
+        }`}
+      >
+        {fixed ? 'Pinned support (click to release)' : 'Add pinned support'}
+      </button>
+      <div className="text-[10px] uppercase text-white/45 pt-1">Load (N)</div>
+      <label className="flex items-center gap-2 text-xs">
+        <span className="w-8 text-white/55">Fx</span>
+        <input
+          type="number"
+          value={fx}
+          step={100}
+          onChange={(e) => setLoad(node.id, parseFloat(e.target.value) || 0, fy)}
+          className="flex-1 bg-white/5 border border-white/10 rounded px-1.5 py-0.5 font-mono outline-none"
+        />
+      </label>
+      <label className="flex items-center gap-2 text-xs">
+        <span className="w-8 text-white/55">Fy</span>
+        <input
+          type="number"
+          value={fy}
+          step={100}
+          onChange={(e) => setLoad(node.id, fx, parseFloat(e.target.value) || 0)}
+          className="flex-1 bg-white/5 border border-white/10 rounded px-1.5 py-0.5 font-mono outline-none"
+        />
+      </label>
+      <button
+        onClick={() => removeNode(node.id)}
+        className="w-full px-2 py-1 rounded-md text-xs bg-traffic-red/20 hover:bg-traffic-red/40 text-traffic-red"
+      >
+        Delete node
+      </button>
     </div>
   );
 }
