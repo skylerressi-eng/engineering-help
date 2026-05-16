@@ -417,6 +417,13 @@ function Arrow({
     );
     return a;
   }, [color, from[0], from[1], to[0], to[1], len]);
+  // Dispose the previous ArrowHelper's geometries/materials when it changes
+  // (it's rebuilt on every AoA / speed change).
+  useEffect(() => {
+    return () => {
+      arrow.dispose();
+    };
+  }, [arrow]);
   return <primitive object={arrow} />;
 }
 
