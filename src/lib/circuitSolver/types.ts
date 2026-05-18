@@ -5,7 +5,16 @@ export type CompType =
   | 'vsource'
   | 'isource'
   | 'vsource_ac'
+  | 'battery'
   | 'diode'
+  | 'led'
+  | 'switch'
+  | 'potentiometer'
+  | 'lamp'
+  | 'fuse'
+  | 'voltmeter'
+  | 'ammeter'
+  | 'opamp'
   | 'ground'
   | 'wire';
 

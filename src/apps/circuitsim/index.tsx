@@ -21,13 +21,22 @@ import { publishAppState } from '@/ai/screenScanner';
 import { CIRCUIT_PRESETS, type CircuitPreset } from '@/lib/circuitSolver/presets';
 
 const PALETTE_ORDER: CompType[] = [
-  'resistor',
-  'capacitor',
-  'inductor',
+  'battery',
   'vsource',
   'vsource_ac',
   'isource',
+  'resistor',
+  'potentiometer',
+  'capacitor',
+  'inductor',
+  'switch',
   'diode',
+  'led',
+  'lamp',
+  'fuse',
+  'voltmeter',
+  'ammeter',
+  'opamp',
   'ground',
 ];
 
@@ -36,6 +45,7 @@ function CircuitSim({ appId }: { appId: string }) {
   const selectedId = useCircuitSimStore((s) => s.selectedId);
   const wiringFrom = useCircuitSimStore((s) => s.wiringFrom);
   const probes = useCircuitSimStore((s) => s.probes);
+  const [breadboard, setBreadboard] = useState(false);
   const dc = useCircuitSimStore((s) => s.dc);
   const transient = useCircuitSimStore((s) => s.transient);
   const scopeMode = useCircuitSimStore((s) => s.scopeMode);
@@ -273,6 +283,7 @@ function CircuitSim({ appId }: { appId: string }) {
                   const newId = store.addComponent(c.type, c.x, c.y);
                   idMap.set(c.id, newId);
                   store.setValue(newId, c.value, c.freq);
+                  if (c.initial !== undefined) store.setInitial(newId, c.initial);
                 }
                 for (const [a, b] of preset.wires) {
                   const remap = (s: string) => {
@@ -285,6 +296,15 @@ function CircuitSim({ appId }: { appId: string }) {
                 }
               }}
             />
+            <button
+              onClick={() => setBreadboard((b) => !b)}
+              className={`flex items-center gap-1 px-2 h-6 rounded-md text-xs ${
+                breadboard ? 'bg-accent text-white' : 'hover:bg-white/10'
+              }`}
+              title="Toggle breadboard background"
+            >
+              Breadboard
+            </button>
             <button
               onClick={clear}
               className="flex items-center gap-1 px-2 h-6 rounded-md text-xs hover:bg-white/10"
@@ -309,6 +329,7 @@ function CircuitSim({ appId }: { appId: string }) {
             }}
             onCancelWire={cancelWire}
             onDelete={removeComponent}
+            breadboard={breadboard}
           />
           <Oscilloscope
             transient={transient}
@@ -380,6 +401,37 @@ function SelectedProps({
           />
         </label>
       )}
+      {comp.type === 'switch' && (
+        <label className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={!!comp.initial}
+            onChange={(e) =>
+              useCircuitSimStore.getState().setInitial(comp.id, e.target.checked ? 1 : 0)
+            }
+          />
+          <span className="text-white/75">Closed (conducting)</span>
+        </label>
+      )}
+      {comp.type === 'potentiometer' && (
+        <label className="flex items-center gap-2">
+          <span className="w-10 text-white/55">wiper</span>
+          <input
+            type="range"
+            min={0.01}
+            max={0.99}
+            step={0.01}
+            value={comp.initial ?? 0.5}
+            onChange={(e) =>
+              useCircuitSimStore.getState().setInitial(comp.id, parseFloat(e.target.value))
+            }
+            className="flex-1"
+          />
+          <span className="font-mono w-9 text-right">
+            {((comp.initial ?? 0.5) * 100).toFixed(0)}%
+          </span>
+        </label>
+      )}
       <button
         onClick={onDelete}
         className="w-full px-2 py-1 rounded-md bg-traffic-red/20 hover:bg-traffic-red/40 text-traffic-red text-xs"
@@ -442,6 +494,7 @@ function CircuitCanvas({
   onPinClick,
   onCancelWire,
   onDelete,
+  breadboard,
 }: {
   components: CircuitComp[];
   selectedId: string | null;
@@ -452,6 +505,7 @@ function CircuitCanvas({
   onPinClick: (pinId: string) => void;
   onCancelWire: () => void;
   onDelete: (id: string) => void;
+  breadboard: boolean;
 }) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [cursor, setCursor] = useState<{ x: number; y: number } | null>(null);
@@ -483,14 +537,38 @@ function CircuitCanvas({
   const pinPos = (c: CircuitComp, pin: string): { x: number; y: number } => {
     const spec = COMPONENT_SPECS[c.type];
     if (c.type === 'ground') return { x: c.x + spec.width / 2, y: c.y };
-    if (c.type === 'diode') {
-      return pin === 'a' ? { x: c.x, y: c.y + spec.height / 2 } : { x: c.x + spec.width, y: c.y + spec.height / 2 };
+    if (c.type === 'diode' || c.type === 'led') {
+      return pin === 'a'
+        ? { x: c.x, y: c.y + spec.height / 2 }
+        : { x: c.x + spec.width, y: c.y + spec.height / 2 };
     }
-    if (c.type === 'vsource' || c.type === 'vsource_ac' || c.type === 'isource') {
-      return pin === 'p' ? { x: c.x + spec.width / 2, y: c.y } : { x: c.x + spec.width / 2, y: c.y + spec.height };
+    if (
+      c.type === 'vsource' ||
+      c.type === 'vsource_ac' ||
+      c.type === 'isource' ||
+      c.type === 'battery' ||
+      c.type === 'ammeter' ||
+      c.type === 'voltmeter' ||
+      c.type === 'lamp'
+    ) {
+      return pin === 'p' || pin === 'a'
+        ? { x: c.x + spec.width / 2, y: c.y }
+        : { x: c.x + spec.width / 2, y: c.y + spec.height };
     }
-    // R / C / L (horizontal)
-    return pin === 'a' ? { x: c.x, y: c.y + spec.height / 2 } : { x: c.x + spec.width, y: c.y + spec.height / 2 };
+    if (c.type === 'potentiometer') {
+      if (pin === 'a') return { x: c.x, y: c.y + spec.height / 2 };
+      if (pin === 'b') return { x: c.x + spec.width, y: c.y + spec.height / 2 };
+      return { x: c.x + spec.width / 2, y: c.y }; // wiper on top
+    }
+    if (c.type === 'opamp') {
+      if (pin === 'p') return { x: c.x, y: c.y + spec.height * 0.3 };
+      if (pin === 'n') return { x: c.x, y: c.y + spec.height * 0.7 };
+      return { x: c.x + spec.width, y: c.y + spec.height / 2 }; // o
+    }
+    // R / C / L / switch / fuse (horizontal a–b)
+    return pin === 'a'
+      ? { x: c.x, y: c.y + spec.height / 2 }
+      : { x: c.x + spec.width, y: c.y + spec.height / 2 };
   };
 
   // Helpers
@@ -524,8 +602,25 @@ function CircuitCanvas({
         <pattern id="ckt-grid" width={20} height={20} patternUnits="userSpaceOnUse">
           <circle cx={1} cy={1} r={0.7} fill="rgba(255,255,255,0.16)" />
         </pattern>
+        <pattern id="bb-holes" width={14} height={14} patternUnits="userSpaceOnUse">
+          <rect width={14} height={14} fill="#1c2433" />
+          <rect x={5} y={5} width={4} height={4} rx={1} fill="#0b0f17" />
+        </pattern>
       </defs>
-      <rect width={size.w} height={size.h} fill="url(#ckt-grid)" />
+      {breadboard ? (
+        <g>
+          <rect width={size.w} height={size.h} fill="#243049" />
+          {/* power rails */}
+          <rect x={0} y={10} width={size.w} height={4} fill="#b91c1c" opacity={0.5} />
+          <rect x={0} y={size.h - 14} width={size.w} height={4} fill="#1d4ed8" opacity={0.5} />
+          {/* tie-point field */}
+          <rect x={0} y={28} width={size.w} height={size.h - 56} fill="url(#bb-holes)" />
+          {/* center channel */}
+          <rect x={0} y={size.h / 2 - 6} width={size.w} height={12} fill="#1a2233" />
+        </g>
+      ) : (
+        <rect width={size.w} height={size.h} fill="url(#ckt-grid)" />
+      )}
 
       {/* Wires */}
       {components
@@ -651,12 +746,42 @@ function CompShape({
     if (comp.type === 'ground') {
       x = spec.width / 2;
       y = 0;
-    } else if (comp.type === 'diode') {
+    } else if (comp.type === 'diode' || comp.type === 'led') {
       x = pin === 'a' ? 0 : spec.width;
       y = spec.height / 2;
-    } else if (comp.type === 'vsource' || comp.type === 'vsource_ac' || comp.type === 'isource') {
+    } else if (
+      comp.type === 'vsource' ||
+      comp.type === 'vsource_ac' ||
+      comp.type === 'isource' ||
+      comp.type === 'battery' ||
+      comp.type === 'ammeter' ||
+      comp.type === 'voltmeter' ||
+      comp.type === 'lamp'
+    ) {
       x = spec.width / 2;
-      y = pin === 'p' ? 0 : spec.height;
+      y = pin === 'p' || pin === 'a' ? 0 : spec.height;
+    } else if (comp.type === 'potentiometer') {
+      if (pin === 'a') {
+        x = 0;
+        y = spec.height / 2;
+      } else if (pin === 'b') {
+        x = spec.width;
+        y = spec.height / 2;
+      } else {
+        x = spec.width / 2;
+        y = 0;
+      }
+    } else if (comp.type === 'opamp') {
+      if (pin === 'p') {
+        x = 0;
+        y = spec.height * 0.3;
+      } else if (pin === 'n') {
+        x = 0;
+        y = spec.height * 0.7;
+      } else {
+        x = spec.width;
+        y = spec.height / 2;
+      }
     } else {
       x = pin === 'a' ? 0 : spec.width;
       y = spec.height / 2;

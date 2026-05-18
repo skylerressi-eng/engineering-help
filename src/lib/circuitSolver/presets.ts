@@ -12,6 +12,8 @@ export interface PresetComp {
   y: number;
   value: number;
   freq?: number;
+  /** switch closed (1) / pot wiper ratio (0..1) */
+  initial?: number;
 }
 
 export interface CircuitPreset {
@@ -291,6 +293,60 @@ export const CIRCUIT_PRESETS: CircuitPreset[] = [
       ['lb.k', 'v5.n'],
       ['lc.k', 'v5.n'],
       ['v5.n', 'gnd.p'],
+    ],
+  },
+  {
+    id: 'flashlight',
+    name: 'Flashlight (battery + switch + LED)',
+    description: 'Battery → switch → 220 Ω → LED → ground. Toggle the switch.',
+    components: [
+      { id: 'bat', type: 'battery', x: 70, y: 110, value: 9 },
+      { id: 'sw', type: 'switch', x: 200, y: 80, value: 0, initial: 1 },
+      { id: 'r1', type: 'resistor', x: 300, y: 80, value: 220 },
+      { id: 'led', type: 'led', x: 400, y: 150, value: 0 },
+      { id: 'gnd', type: 'ground', x: 400, y: 240, value: 0 },
+    ],
+    wires: [
+      ['bat.p', 'sw.a'],
+      ['sw.b', 'r1.a'],
+      ['r1.b', 'led.a'],
+      ['led.k', 'bat.n'],
+      ['bat.n', 'gnd.p'],
+    ],
+  },
+  {
+    id: 'pot-dimmer',
+    name: 'Potentiometer LED Dimmer',
+    description: 'Wiper sets the series resistance to a lamp. Drag the wiper slider.',
+    components: [
+      { id: 'bat', type: 'battery', x: 70, y: 120, value: 9 },
+      { id: 'pot', type: 'potentiometer', x: 210, y: 60, value: 10000, initial: 0.5 },
+      { id: 'lamp', type: 'lamp', x: 340, y: 120, value: 200 },
+      { id: 'gnd', type: 'ground', x: 340, y: 230, value: 0 },
+    ],
+    wires: [
+      ['bat.p', 'pot.a'],
+      ['pot.w', 'lamp.a'],
+      ['lamp.b', 'bat.n'],
+      ['bat.n', 'gnd.p'],
+    ],
+  },
+  {
+    id: 'opamp-follower',
+    name: 'Op-Amp Voltage Follower',
+    description: 'Ideal op-amp buffer: output tracks the input. Probe in vs out.',
+    components: [
+      { id: 'vin', type: 'vsource', x: 70, y: 80, value: 3 },
+      { id: 'oa', type: 'opamp', x: 230, y: 80, value: 0 },
+      { id: 'rl', type: 'resistor', x: 360, y: 150, value: 10000 },
+      { id: 'gnd', type: 'ground', x: 230, y: 240, value: 0 },
+    ],
+    wires: [
+      ['vin.p', 'oa.p'],
+      ['oa.o', 'oa.n'],
+      ['oa.o', 'rl.a'],
+      ['rl.b', 'vin.n'],
+      ['vin.n', 'gnd.p'],
     ],
   },
 ];

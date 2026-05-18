@@ -20,7 +20,16 @@ export const COMPONENT_SPECS: Record<CompType, CompSpec> = {
   vsource: { type: 'vsource', label: 'V-Source (DC)', pins: ['p', 'n'], defaultValue: 5, unit: 'V', width: 50, height: 50, symbol: 'V' },
   vsource_ac: { type: 'vsource_ac', label: 'V-Source (AC)', pins: ['p', 'n'], defaultValue: 1, unit: 'V', width: 50, height: 50, symbol: '~' },
   isource: { type: 'isource', label: 'I-Source', pins: ['p', 'n'], defaultValue: 0.01, unit: 'A', width: 50, height: 50, symbol: 'I' },
+  battery: { type: 'battery', label: 'Battery', pins: ['p', 'n'], defaultValue: 9, unit: 'V', width: 50, height: 50, symbol: '🔋' },
   diode: { type: 'diode', label: 'Diode', pins: ['a', 'k'], defaultValue: 0, unit: '', width: 50, height: 20, symbol: '▷' },
+  led: { type: 'led', label: 'LED', pins: ['a', 'k'], defaultValue: 0, unit: '', width: 50, height: 24, symbol: '◊' },
+  switch: { type: 'switch', label: 'Switch', pins: ['a', 'b'], defaultValue: 0, unit: '', width: 50, height: 24, symbol: '⨯' },
+  potentiometer: { type: 'potentiometer', label: 'Potentiometer', pins: ['a', 'w', 'b'], defaultValue: 10000, unit: 'Ω', width: 60, height: 36, symbol: '⊿' },
+  lamp: { type: 'lamp', label: 'Lamp', pins: ['a', 'b'], defaultValue: 100, unit: 'Ω', width: 44, height: 44, symbol: '💡' },
+  fuse: { type: 'fuse', label: 'Fuse', pins: ['a', 'b'], defaultValue: 0.01, unit: 'Ω', width: 56, height: 22, symbol: '⊝' },
+  voltmeter: { type: 'voltmeter', label: 'Voltmeter', pins: ['a', 'b'], defaultValue: 0, unit: '', width: 44, height: 44, symbol: 'V' },
+  ammeter: { type: 'ammeter', label: 'Ammeter', pins: ['p', 'n'], defaultValue: 0, unit: '', width: 44, height: 44, symbol: 'A' },
+  opamp: { type: 'opamp', label: 'Op-Amp', pins: ['p', 'n', 'o'], defaultValue: 0, unit: '', width: 56, height: 56, symbol: '▷' },
   ground: { type: 'ground', label: 'Ground', pins: ['p'], defaultValue: 0, unit: '', width: 28, height: 28, symbol: '⏚' },
   wire: { type: 'wire', label: 'Wire', pins: [], defaultValue: 0, unit: '', width: 0, height: 0, symbol: '' },
 };
@@ -52,6 +61,7 @@ interface CircuitSimStore {
   moveComponent: (id: string, x: number, y: number) => void;
   setSelected: (id: string | null) => void;
   setValue: (id: string, value: number, freq?: number) => void;
+  setInitial: (id: string, initial: number) => void;
   beginWire: (pinId: string) => void;
   cancelWire: () => void;
   completeWire: (pinId: string) => void;
@@ -166,6 +176,12 @@ export const useCircuitSimStore = create<CircuitSimStore>((set, get) => ({
     set((s) => ({
       components: s.components.map((c) =>
         c.id === id ? { ...c, value, ...(freq !== undefined ? { freq } : {}) } : c,
+      ),
+    })),
+  setInitial: (id, initial) =>
+    set((s) => ({
+      components: s.components.map((c) =>
+        c.id === id ? { ...c, initial } : c,
       ),
     })),
   beginWire: (pinId) => set({ wiringFrom: pinId }),

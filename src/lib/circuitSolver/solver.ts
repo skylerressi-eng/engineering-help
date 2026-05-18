@@ -47,10 +47,16 @@ function buildNodeMap(circuit: AnalogCircuit): { idx: Map<string, number>; n: nu
   return { idx, n: Array.from(idx.values()).filter((v) => v >= 0).length };
 }
 
-/** Identify components that contribute an extra branch current row (V/L). */
+/** Identify components that contribute an extra branch-current row. */
 function branchComponents(circuit: AnalogCircuit): CircuitComp[] {
   return circuit.components.filter(
-    (c) => c.type === 'vsource' || c.type === 'vsource_ac' || c.type === 'inductor',
+    (c) =>
+      c.type === 'vsource' ||
+      c.type === 'vsource_ac' ||
+      c.type === 'battery' ||
+      c.type === 'ammeter' ||
+      c.type === 'inductor' ||
+      c.type === 'opamp',
   );
 }
 
@@ -143,7 +149,12 @@ function buildSystem(circuit: AnalogCircuit, opts: BuildOpts): MNASystem {
         // DC: short circuit (L acts like a wire)
         b[bi] = 0;
       }
-    } else if (c.type === 'vsource' || c.type === 'vsource_ac') {
+    } else if (
+      c.type === 'vsource' ||
+      c.type === 'vsource_ac' ||
+      c.type === 'battery' ||
+      c.type === 'ammeter'
+    ) {
       const a = nodeIdx.get(c.pins.p)!;
       const bn = nodeIdx.get(c.pins.n)!;
       const bi = branchIdx.get(c.id)!;
@@ -154,14 +165,61 @@ function buildSystem(circuit: AnalogCircuit, opts: BuildOpts): MNASystem {
       const V =
         c.type === 'vsource_ac'
           ? c.value * Math.sin(2 * Math.PI * (c.freq ?? 60) * opts.time)
-          : c.value;
+          : c.type === 'ammeter'
+            ? 0 // ideal ammeter: 0 V branch, reads its current directly
+            : c.value;
       b[bi] = V;
+    } else if (
+      c.type === 'switch' ||
+      c.type === 'lamp' ||
+      c.type === 'fuse' ||
+      c.type === 'voltmeter'
+    ) {
+      const a = nodeIdx.get(c.pins.a)!;
+      const bn = nodeIdx.get(c.pins.b)!;
+      let R: number;
+      if (c.type === 'switch') R = c.initial ? 1e-3 : 1e12; // initial=1 closed
+      else if (c.type === 'voltmeter') R = 1e9; // ideal-ish: negligible current
+      else if (c.type === 'fuse') R = Math.max(1e-3, c.value || 0.01);
+      else R = Math.max(1e-3, c.value || 100); // lamp
+      const g = 1 / R;
+      stamp(a, a, g);
+      stamp(bn, bn, g);
+      stamp(a, bn, -g);
+      stamp(bn, a, -g);
+    } else if (c.type === 'potentiometer') {
+      // 3-terminal: a — wiper(w) — b. R total = value; ratio in `initial` (0..1)
+      const a = nodeIdx.get(c.pins.a)!;
+      const w = nodeIdx.get(c.pins.w)!;
+      const bn = nodeIdx.get(c.pins.b)!;
+      const ratio = Math.max(0.001, Math.min(0.999, c.initial ?? 0.5));
+      const Rtot = Math.max(1, c.value || 10000);
+      const g1 = 1 / (Rtot * ratio);
+      const g2 = 1 / (Rtot * (1 - ratio));
+      stamp(a, a, g1);
+      stamp(w, w, g1);
+      stamp(a, w, -g1);
+      stamp(w, a, -g1);
+      stamp(w, w, g2);
+      stamp(bn, bn, g2);
+      stamp(w, bn, -g2);
+      stamp(bn, w, -g2);
+    } else if (c.type === 'opamp') {
+      // Ideal op-amp: forces V(p) = V(n); output supplies any current.
+      const p = nodeIdx.get(c.pins.p)!;
+      const n = nodeIdx.get(c.pins.n)!;
+      const o = nodeIdx.get(c.pins.o)!;
+      const bi = branchIdx.get(c.id)!;
+      if (o >= 0) add(A, size, o, bi, 1); // output current
+      if (p >= 0) add(A, size, bi, p, 1); // constraint: v(p) - v(n) = 0
+      if (n >= 0) add(A, size, bi, n, -1);
+      b[bi] = 0;
     } else if (c.type === 'isource') {
       const a = nodeIdx.get(c.pins.p)!;
       const bn = nodeIdx.get(c.pins.n)!;
       if (a >= 0) b[a] -= c.value;
       if (bn >= 0) b[bn] += c.value;
-    } else if (c.type === 'diode') {
+    } else if (c.type === 'diode' || c.type === 'led') {
       const a = nodeIdx.get(c.pins.a)!;
       const bn = nodeIdx.get(c.pins.k)!;
       const V0 = opts.diodeV.get(c.id) ?? 0;
@@ -208,7 +266,7 @@ export function solveDC(circuit: AnalogCircuit): DCResult {
     prev = x;
     // Update diode voltages from solution
     for (const c of circuit.components) {
-      if (c.type === 'diode') {
+      if (c.type === 'diode' || c.type === 'led') {
         const a = sys.nodeIdx.get(c.pins.a)!;
         const k = sys.nodeIdx.get(c.pins.k)!;
         const va = a < 0 ? 0 : x[a];
@@ -218,7 +276,8 @@ export function solveDC(circuit: AnalogCircuit): DCResult {
     }
     void at;
     void set;
-    if (circuit.components.every((c) => c.type !== 'diode')) break; // linear → 1 iter
+    if (circuit.components.every((c) => c.type !== 'diode' && c.type !== 'led'))
+      break; // linear → 1 iter
   }
 
   // Extract results
@@ -263,7 +322,8 @@ export function solveTransient(
   const branchCurrents: Record<string, number[]> = {};
 
   const diodeV = new Map<string, number>();
-  for (const c of circuit.components) if (c.type === 'diode') diodeV.set(c.id, 0);
+  for (const c of circuit.components)
+    if (c.type === 'diode' || c.type === 'led') diodeV.set(c.id, 0);
 
   let t = 0;
   while (t <= duration + 1e-9) {
@@ -287,7 +347,7 @@ export function solveTransient(
       prev = x;
       let updated = false;
       for (const c of circuit.components) {
-        if (c.type !== 'diode') continue;
+        if (c.type !== 'diode' && c.type !== 'led') continue;
         updated = true;
         const a = sys.nodeIdx.get(c.pins.a)!;
         const k = sys.nodeIdx.get(c.pins.k)!;
