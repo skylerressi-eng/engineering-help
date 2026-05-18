@@ -20,7 +20,8 @@ const placeShapeLite = (v: Vec2[], chord: number, aoa: number): Vec2[] =>
   placeShape(v, { x: 0, y: 0 }, chord, aoa);
 import { useAppTools } from '@/hooks/useToolRegistry';
 import { publishAppState } from '@/ai/screenScanner';
-import { parseOBJ, parseSTL, extractSilhouette } from '@/lib/cfd/customShape';
+import { extractSilhouette } from '@/lib/cfd/customShape';
+import { loadMeshFile } from '@/lib/modeler/importMesh';
 import { useModelerStore } from '@/store/modelerStore';
 import { useLibraryStore, geometryFromJSON } from '@/store/libraryStore';
 import { toast } from '@/store/toastStore';
@@ -65,16 +66,13 @@ function AeroSim({ appId }: { appId: string }) {
     const file = e.target.files?.[0];
     if (!file) return;
     try {
-      const ext = file.name.toLowerCase().split('.').pop();
-      let geom;
-      if (ext === 'stl') geom = parseSTL(await file.arrayBuffer());
-      else geom = parseOBJ(await file.text());
+      const geom = await loadMeshFile(file);
       const sil = extractSilhouette(geom);
       if (sil.length < 3) {
         toast.error('Import failed', 'Could not extract a cross-section from that mesh.');
       } else {
         setImported({
-          name: file.name.replace(/\.(obj|stl)$/i, ''),
+          name: file.name.replace(/\.[^.]+$/, ''),
           silhouette: sil,
           geometry: geom,
         });
@@ -288,7 +286,7 @@ function AeroSim({ appId }: { appId: string }) {
         <button
           onClick={() => fileRef.current?.click()}
           className="flex items-center gap-1 px-2 h-6 rounded-md text-xs hover:bg-white/10"
-          title="Import a CAD mesh (.obj or .stl) and test its cross-section"
+          title="Import a CAD mesh (OBJ/STL/PLY/GLTF/GLB/3MF/DAE/FBX) and test its cross-section"
         >
           <Upload size={12} /> Import file
         </button>
@@ -313,7 +311,7 @@ function AeroSim({ appId }: { appId: string }) {
         <input
           ref={fileRef}
           type="file"
-          accept=".obj,.stl"
+          accept=".obj,.stl,.ply,.gltf,.glb,.3mf,.dae,.fbx"
           hidden
           onChange={onImportFile}
         />

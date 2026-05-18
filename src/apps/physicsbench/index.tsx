@@ -548,14 +548,14 @@ function ImportObjButton() {
     const f = e.target.files?.[0];
     if (!f) return;
     try {
-      const [{ parseOBJ, parseSTL, extractSilhouette }, types, toastMod] = await Promise.all([
-        import('@/lib/cfd/customShape'),
-        import('@/lib/physics2d/types'),
-        import('@/store/toastStore'),
-      ]);
-      const ext = f.name.toLowerCase().split('.').pop();
-      const geom =
-        ext === 'stl' ? parseSTL(await f.arrayBuffer()) : parseOBJ(await f.text());
+      const [{ loadMeshFile }, { extractSilhouette }, types, toastMod] =
+        await Promise.all([
+          import('@/lib/modeler/importMesh'),
+          import('@/lib/cfd/customShape'),
+          import('@/lib/physics2d/types'),
+          import('@/store/toastStore'),
+        ]);
+      const geom = await loadMeshFile(f);
       const sil = extractSilhouette(geom);
       if (sil.length < 3) {
         toastMod.toast.error('Import failed', 'No usable 2D cross-section in that model.');
@@ -570,7 +570,7 @@ function ImportObjButton() {
         restitution: mat?.restitution,
         friction: mat?.friction,
         color: mat?.color,
-        label: f.name.replace(/\.(obj|stl)$/i, ''),
+        label: f.name.replace(/\.[^.]+$/, ''),
       });
       usePhysicsBenchStore.getState().mutate((w) => w.add(body));
       toastMod.toast.success('Imported', `${f.name} as ${mat?.label ?? 'body'}`);
@@ -586,11 +586,17 @@ function ImportObjButton() {
       <button
         onClick={() => ref.current?.click()}
         className="flex items-center gap-1 px-2 h-6 rounded-md text-xs hover:bg-white/10"
-        title="Import a CAD mesh (.obj/.stl) as a rigid body (uses the selected material)"
+        title="Import a CAD mesh (OBJ/STL/PLY/GLTF/GLB/3MF/DAE/FBX) as a rigid body (uses the selected material)"
       >
         Import CAD
       </button>
-      <input ref={ref} type="file" accept=".obj,.stl" hidden onChange={onFile} />
+      <input
+        ref={ref}
+        type="file"
+        accept=".obj,.stl,.ply,.gltf,.glb,.3mf,.dae,.fbx"
+        hidden
+        onChange={onFile}
+      />
     </>
   );
 }
