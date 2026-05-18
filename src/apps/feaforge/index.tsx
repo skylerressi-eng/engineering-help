@@ -14,6 +14,7 @@ import {
 import type { AppModule } from '@/os/types';
 import { useFeaStore, type FeaTool } from '@/store/feaStore';
 import { FEA_PRESETS } from '@/lib/fea/presets';
+import { ENG_MATERIALS } from '@/lib/materials/engineering';
 import { useAppTools } from '@/hooks/useToolRegistry';
 import { publishAppState } from '@/ai/screenScanner';
 import { toast } from '@/store/toastStore';
@@ -61,6 +62,9 @@ function FEAForge({ appId }: { appId: string }) {
   const loadPreset = useFeaStore((s) => s.loadPreset);
   const clear = useFeaStore((s) => s.clear);
   const solve = useFeaStore((s) => s.solve);
+  const materialId = useFeaStore((s) => s.materialId);
+  const setMaterial = useFeaStore((s) => s.setMaterial);
+  const yieldStress = useFeaStore((s) => s.yieldStress);
 
   const svgRef = useRef<SVGSVGElement>(null);
   const [cursor, setCursor] = useState<{ x: number; y: number } | null>(null);
@@ -256,6 +260,18 @@ function FEAForge({ appId }: { appId: string }) {
           <span className="text-[10px] font-mono text-white/40 w-16">
             {dispScale > 999 ? dispScale.toExponential(1) : dispScale.toFixed(0)}
           </span>
+          <select
+            value={materialId}
+            onChange={(e) => setMaterial(e.target.value)}
+            title="Member material (sets E and yield)"
+            className="ml-2 bg-white/5 border border-white/10 rounded-md px-1.5 h-6 text-[11px] outline-none max-w-[150px]"
+          >
+            {ENG_MATERIALS.map((m) => (
+              <option key={m.id} value={m.id} className="bg-zinc-800">
+                {m.label}
+              </option>
+            ))}
+          </select>
           <div className="relative ml-2">
             <button
               onClick={() => setPresetsOpen((o) => !o)}
@@ -439,7 +455,40 @@ function FEAForge({ appId }: { appId: string }) {
             <div className="space-y-1 text-[12px] font-mono">
               <Row k="max δ" v={`${result.maxDisp.toExponential(3)} m`} />
               <Row k="max σ" v={`${(result.maxStress / 1e6).toFixed(2)} MPa`} />
+              <Row
+                k="utilisation"
+                v={`${((result.maxStress / yieldStress) * 100).toFixed(0)}% σy`}
+              />
               <Row k="members" v={String(result.elements.length)} />
+              {result.maxStress >= yieldStress && (
+                <div className="text-traffic-red text-[11px] pt-1">
+                  ⚠ a member exceeds yield — the structure would fail
+                </div>
+              )}
+              {(() => {
+                const sorted = [...result.elements].sort((a, b) => b.force - a.force);
+                const tension = sorted[0];
+                const comp = sorted[sorted.length - 1];
+                return (
+                  <div className="pt-2 mt-1 border-t border-white/10 space-y-0.5">
+                    <div className="text-[10px] uppercase text-white/45">
+                      Governing members
+                    </div>
+                    {tension && tension.force > 0 && (
+                      <div className="flex justify-between">
+                        <span className="text-rose-400">↑ tension {tension.id}</span>
+                        <span>{(tension.force / 1000).toFixed(2)} kN</span>
+                      </div>
+                    )}
+                    {comp && comp.force < 0 && (
+                      <div className="flex justify-between">
+                        <span className="text-sky-400">↓ compr. {comp.id}</span>
+                        <span>{(comp.force / 1000).toFixed(2)} kN</span>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
           )}
         </div>

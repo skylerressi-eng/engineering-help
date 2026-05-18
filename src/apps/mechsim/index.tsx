@@ -8,6 +8,7 @@ import {
   type BeamResult,
 } from '@/lib/mech/beam';
 import { solveThermal } from '@/lib/mech/thermal';
+import { ENG_MATERIALS, getEngMaterial } from '@/lib/materials/engineering';
 import { sampleColormap } from '@/lib/viz/colormaps';
 import { useAppTools } from '@/hooks/useToolRegistry';
 import { publishAppState } from '@/ai/screenScanner';
@@ -20,15 +21,20 @@ function StructuralTab() {
   const [L, setL] = useState(3);
   const [b, setB] = useState(0.05);
   const [h, setH] = useState(0.1);
-  const [E, setE] = useState(200e9);
+  const [matId, setMatId] = useState('steel-mild');
   const [P, setP] = useState(2000);
   const [a, setA] = useState(3);
   const [w, setW] = useState(500);
+
+  const mat = getEngMaterial(matId);
+  const E = mat.E;
 
   const res: BeamResult = useMemo(() => {
     const { I, c } = rectSection(b, h);
     return solveBeam({ support, L, E, I, c, P, a: Math.min(a, L), w });
   }, [support, L, b, h, E, P, a, w]);
+
+  const utilisation = res.maxStress / mat.yield; // 1.0 = at yield
 
   const W = 520;
   const H = 120;
@@ -85,7 +91,23 @@ function StructuralTab() {
         <Num label="L (m)" value={L} onChange={setL} step={0.1} />
         <Num label="b (m)" value={b} onChange={setB} step={0.005} />
         <Num label="h (m)" value={h} onChange={setH} step={0.005} />
-        <Num label="E (GPa)" value={E / 1e9} onChange={(v) => setE(v * 1e9)} step={10} />
+        <div>
+          <div className="text-[10px] uppercase text-white/45 mb-1">Material</div>
+          <select
+            value={matId}
+            onChange={(e) => setMatId(e.target.value)}
+            className="w-full bg-white/5 border border-white/10 rounded-md px-2 py-1 text-xs outline-none"
+          >
+            {ENG_MATERIALS.map((m) => (
+              <option key={m.id} value={m.id} className="bg-zinc-800">
+                {m.label}
+              </option>
+            ))}
+          </select>
+          <div className="text-[10px] text-white/45 mt-1 font-mono">
+            E {(mat.E / 1e9).toFixed(0)} GPa · σy {(mat.yield / 1e6).toFixed(0)} MPa
+          </div>
+        </div>
         <div className="text-[10px] uppercase text-white/45 pt-1">Loads</div>
         <Num label="P (N)" value={P} onChange={setP} step={100} />
         <Num label="a (m)" value={a} onChange={setA} step={0.1} />
@@ -104,9 +126,23 @@ function StructuralTab() {
             <div className="flex justify-between">
               <span className="text-white/55">max σ</span>
               <span
-                className={res.maxStress > 250e6 ? 'text-traffic-red' : 'text-emerald-300'}
+                className={utilisation >= 1 ? 'text-traffic-red' : 'text-emerald-300'}
               >
                 {(res.maxStress / 1e6).toFixed(1)} MPa
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-white/55">utilisation</span>
+              <span
+                className={
+                  utilisation >= 1
+                    ? 'text-traffic-red'
+                    : utilisation > 0.66
+                      ? 'text-amber-400'
+                      : 'text-emerald-300'
+                }
+              >
+                {(utilisation * 100).toFixed(0)}% σy
               </span>
             </div>
             <div className="flex justify-between">
@@ -126,9 +162,9 @@ function StructuralTab() {
               </div>
             )}
           </div>
-          {res.maxStress > 250e6 && (
+          {utilisation >= 1 && (
             <div className="mt-1 text-[10px] text-traffic-red">
-              ⚠ exceeds ~250 MPa yield (mild steel)
+              ⚠ stress exceeds {mat.label} yield ({(mat.yield / 1e6).toFixed(0)} MPa) — it would fail
             </div>
           )}
         </div>

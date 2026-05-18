@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { solveTruss, type FeaModel, type FeaResult } from '@/lib/fea/truss';
 import { FEA_PRESETS } from '@/lib/fea/presets';
+import { getEngMaterial } from '@/lib/materials/engineering';
 
 let seq = 1;
 const uid = (p: string) => `${p}${seq++}`;
@@ -33,6 +34,9 @@ interface FeaStore {
   setDispScale: (n: number) => void;
   setE: (e: number) => void;
   setArea: (a: number) => void;
+  materialId: string;
+  yieldStress: number;
+  setMaterial: (id: string) => void;
   loadPreset: (id: string) => void;
   clear: () => void;
   solve: () => FeaResult;
@@ -46,8 +50,10 @@ export const useFeaStore = create<FeaStore>((set, get) => ({
   result: null,
   showDeformed: true,
   dispScale: 200,
-  E: 2.1e11,
+  E: 2.0e11,
   area: 1e-4,
+  materialId: 'steel-mild',
+  yieldStress: 250e6,
   rev: 0,
 
   setTool: (t) => set({ tool: t, elementFrom: null }),
@@ -138,6 +144,21 @@ export const useFeaStore = create<FeaStore>((set, get) => ({
   setDispScale: (n) => set({ dispScale: Math.max(1, Math.min(1e7, n)) }),
   setE: (e) => set({ E: e }),
   setArea: (a) => set({ area: a }),
+  setMaterial: (id) => {
+    const m = getEngMaterial(id);
+    set((s) => ({
+      materialId: id,
+      E: m.E,
+      yieldStress: m.yield,
+      // Re-skin every existing member with the new modulus.
+      model: {
+        ...s.model,
+        elements: s.model.elements.map((e) => ({ ...e, E: m.E })),
+      },
+      result: null,
+      rev: s.rev + 1,
+    }));
+  },
 
   loadPreset: (id) => {
     const p = FEA_PRESETS.find((x) => x.id === id);

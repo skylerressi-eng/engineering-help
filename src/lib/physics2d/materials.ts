@@ -23,6 +23,18 @@ export const MATERIALS: MaterialPreset[] = [
   { id: 'concrete', label: 'Concrete', density: 2.4, restitution: 0.10, friction: 0.7, color: '#6b7280' },
   { id: 'foam', label: 'Foam', density: 0.05, restitution: 0.20, friction: 0.85, color: '#fde68a' },
   { id: 'bouncy', label: 'Super-Ball', density: 1.1, restitution: 0.95, friction: 0.85, color: '#ec4899' },
+  { id: 'titanium', label: 'Titanium', density: 4.43, restitution: 0.22, friction: 0.55, color: '#b8c0c8' },
+  { id: 'lead', label: 'Lead', density: 11.34, restitution: 0.05, friction: 0.45, color: '#475569' },
+  { id: 'gold', label: 'Gold', density: 19.3, restitution: 0.08, friction: 0.4, color: '#d4af37' },
+  { id: 'cork', label: 'Cork', density: 0.24, restitution: 0.45, friction: 0.7, color: '#b08456' },
+  { id: 'stone', label: 'Stone', density: 2.7, restitution: 0.12, friction: 0.8, color: '#78716c' },
+  { id: 'brick', label: 'Brick', density: 1.9, restitution: 0.10, friction: 0.75, color: '#b45309' },
+  { id: 'sponge', label: 'Sponge', density: 0.1, restitution: 0.35, friction: 0.9, color: '#fbbf24' },
+  { id: 'diamond', label: 'Diamond', density: 3.5, restitution: 0.30, friction: 0.2, color: '#a5f3fc' },
+  { id: 'jelly', label: 'Jelly', density: 1.0, restitution: 0.9, friction: 0.98, color: '#f472b6' },
+  { id: 'tungsten', label: 'Tungsten', density: 19.25, restitution: 0.15, friction: 0.5, color: '#64748b' },
+  { id: 'balsa', label: 'Balsa Wood', density: 0.16, restitution: 0.25, friction: 0.6, color: '#fde68a' },
+  { id: 'tire', label: 'Tire Rubber', density: 1.1, restitution: 0.7, friction: 1.1, color: '#111827' },
 ];
 
 export function findMaterial(id: string): MaterialPreset | undefined {
