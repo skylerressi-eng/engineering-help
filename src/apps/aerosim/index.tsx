@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import * as THREE from 'three';
 import { ChevronDown, BarChart3, X, Upload, Play, Pause, RotateCcw, Box } from 'lucide-react';
 import { AeroIcon } from '@/apps/icons';
 import type { AppModule } from '@/os/types';
@@ -23,7 +24,8 @@ import { publishAppState } from '@/ai/screenScanner';
 import { extractSilhouette } from '@/lib/cfd/customShape';
 import { loadMeshFile } from '@/lib/modeler/importMesh';
 import { useModelerStore } from '@/store/modelerStore';
-import { useLibraryStore, geometryFromJSON } from '@/store/libraryStore';
+import { useLibraryStore } from '@/store/libraryStore';
+import { getLibraryItems } from '@/lib/parts/library';
 import { toast } from '@/store/toastStore';
 import Viewport from './Viewport';
 
@@ -531,43 +533,65 @@ function AeroSim({ appId }: { appId: string }) {
 function LibraryImportMenu({
   onPick,
 }: {
-  onPick: (name: string, geom: ReturnType<typeof geometryFromJSON>) => void;
+  onPick: (name: string, geom: THREE.BufferGeometry) => void;
 }) {
-  const models = useLibraryStore((s) => s.models);
+  // Subscribe to saved models so the list refreshes when the user saves more.
+  const savedCount = useLibraryStore((s) => s.models.length);
   const [open, setOpen] = useState(false);
+  const [q, setQ] = useState('');
+  const items = useMemo(
+    () => (open ? getLibraryItems() : []),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [open, savedCount],
+  );
+  const filtered = items.filter((it) =>
+    q ? it.name.toLowerCase().includes(q.toLowerCase()) : true,
+  );
   return (
     <div className="relative">
       <button
         onClick={() => setOpen((o) => !o)}
         className="flex items-center gap-1 px-2 h-6 rounded-md text-xs hover:bg-white/10"
-        title="Import a model you saved to the Library"
+        title="Import any part from the CAD library (catalog + your saved models)"
       >
         <Box size={12} /> From Library
         <ChevronDown size={11} />
       </button>
       {open && (
-        <div className="absolute top-full left-0 mt-1 glass-strong rounded-md min-w-[200px] max-h-64 overflow-y-auto py-1 z-30 shadow-window">
-          {models.length === 0 && (
-            <div className="px-2 py-1.5 text-[11px] text-white/45">
-              No saved models. In Modeler3D click “Save to Library”.
-            </div>
-          )}
-          {models.map((m) => (
-            <button
-              key={m.id}
-              onClick={() => {
-                onPick(m.name, geometryFromJSON(m.geom));
-                setOpen(false);
-              }}
-              className="w-full text-left px-2 py-1 text-xs hover:bg-white/10 flex items-center gap-2"
-            >
-              <span
-                className="w-2.5 h-2.5 rounded-sm"
-                style={{ background: m.color }}
-              />
-              <span className="truncate">{m.name}</span>
-            </button>
-          ))}
+        <div className="absolute top-full left-0 mt-1 glass-strong rounded-md w-60 z-30 shadow-window">
+          <input
+            autoFocus
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Search parts…"
+            className="w-full bg-white/5 border-b border-white/10 px-2 py-1.5 text-xs outline-none"
+          />
+          <div className="max-h-64 overflow-y-auto py-1">
+            {filtered.length === 0 && (
+              <div className="px-2 py-1.5 text-[11px] text-white/45">
+                No matching parts.
+              </div>
+            )}
+            {filtered.map((it) => (
+              <button
+                key={it.id}
+                onClick={() => {
+                  onPick(it.name, it.build());
+                  setOpen(false);
+                }}
+                className="w-full text-left px-2 py-1 text-xs hover:bg-white/10 flex items-center gap-2"
+              >
+                <span
+                  className="w-2.5 h-2.5 rounded-sm shrink-0"
+                  style={{ background: it.color }}
+                />
+                <span className="truncate flex-1">{it.name}</span>
+                <span className="text-[9px] uppercase text-white/35">
+                  {it.source === 'saved' ? 'mine' : it.category}
+                </span>
+              </button>
+            ))}
+          </div>
         </div>
       )}
     </div>

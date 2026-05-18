@@ -6,7 +6,7 @@ import {
   GizmoHelper,
   GizmoViewport,
 } from '@react-three/drei';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { useModelerStore, type SceneObject } from '@/store/modelerStore';
 import { applyStack } from '@/lib/modeler/modifiers';
@@ -107,6 +107,27 @@ function Obj({
   const selectedId = useModelerStore((s) => s.selectedId);
   const isSelected = selectedId === obj.id;
 
+  // Stable ref callback. An inline ref function gets a fresh identity every
+  // render, so React would detach+reattach the mesh on every commit and each
+  // call bumped parent state — an infinite render loop ("Maximum update depth
+  // exceeded"). Keying the callback to obj.id makes it run only on real
+  // mount/unmount, and we only bump when membership actually changes.
+  const setMeshRef = useCallback(
+    (m: THREE.Mesh | null) => {
+      if (m) {
+        if (meshRefs.current.get(obj.id) !== m) {
+          meshRefs.current.set(obj.id, m);
+          onRefChange();
+        }
+      } else if (meshRefs.current.has(obj.id)) {
+        meshRefs.current.delete(obj.id);
+        onRefChange();
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [obj.id],
+  );
+
   // Apply modifier stack only when geometry or modifiers change
   const geom = useMemo(() => {
     if (!obj.modifiers.length) return obj.geometry;
@@ -122,15 +143,7 @@ function Obj({
 
   return (
     <mesh
-      ref={(m) => {
-        if (m) {
-          meshRefs.current.set(obj.id, m);
-          onRefChange();
-        } else if (meshRefs.current.has(obj.id)) {
-          meshRefs.current.delete(obj.id);
-          onRefChange();
-        }
-      }}
+      ref={setMeshRef}
       geometry={geom}
       position={obj.position}
       rotation={obj.rotation}

@@ -26,6 +26,9 @@ import { makeBody, makeCircle, makeBox, makeRegularPolygon, type Body } from '@/
 import { DEMOS, type DemoId } from '@/lib/physics2d/demos';
 import { MATERIALS, findMaterial } from '@/lib/physics2d/materials';
 import { useState, useRef } from 'react';
+import * as THREE from 'three';
+import { getLibraryItems } from '@/lib/parts/library';
+import { useLibraryStore } from '@/store/libraryStore';
 
 function PhysicsBench({ appId }: { appId: string }) {
   const tool = usePhysicsBenchStore((s) => s.tool);
@@ -341,6 +344,7 @@ function PhysicsBench({ appId }: { appId: string }) {
           </div>
           <MaterialPicker />
           <ImportObjButton />
+          <LibraryDropButton />
           <SubstanceFootprint />
           <div className="ml-2 flex items-center gap-2 text-[11px] text-white/65">
             Time
@@ -598,6 +602,94 @@ function ImportObjButton() {
         onChange={onFile}
       />
     </>
+  );
+}
+
+/** Drop any CAD-library part (catalog + saved models) in as a rigid body. */
+function LibraryDropButton() {
+  const savedCount = useLibraryStore((s) => s.models.length);
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState('');
+
+  const drop = async (name: string, geom: THREE.BufferGeometry) => {
+    const [{ extractSilhouette }, types, toastMod] = await Promise.all([
+      import('@/lib/cfd/customShape'),
+      import('@/lib/physics2d/types'),
+      import('@/store/toastStore'),
+    ]);
+    const sil = extractSilhouette(geom);
+    geom.dispose();
+    if (sil.length < 3) {
+      toastMod.toast.error('Cannot drop', 'No usable 2D cross-section.');
+      return;
+    }
+    const mat = findMaterial(usePhysicsBenchStore.getState().currentMaterial);
+    const verts = sil.map((p) => ({ x: (p.x - 0.5) * 1.4, y: -p.y * 1.4 }));
+    const body = types.makeBody(types.makePolygonFromVertices(verts), {
+      pos: { x: 0, y: -4 },
+      density: mat?.density,
+      restitution: mat?.restitution,
+      friction: mat?.friction,
+      color: mat?.color,
+      label: name,
+    });
+    usePhysicsBenchStore.getState().mutate((w) => w.add(body));
+    toastMod.toast.success('Dropped', `${name} as ${mat?.label ?? 'body'}`);
+  };
+
+  const items = open ? getLibraryItems() : [];
+  void savedCount;
+  const filtered = items.filter((it) =>
+    q ? it.name.toLowerCase().includes(q.toLowerCase()) : true,
+  );
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="flex items-center gap-1 px-2 h-6 rounded-md text-xs hover:bg-white/10"
+        title="Drop a part from the CAD library (catalog + your saved models)"
+      >
+        Library
+      </button>
+      {open && (
+        <div className="absolute top-full left-0 mt-1 glass-strong rounded-md w-56 z-30 shadow-window">
+          <input
+            autoFocus
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Search parts…"
+            className="w-full bg-white/5 border-b border-white/10 px-2 py-1.5 text-xs outline-none"
+          />
+          <div className="max-h-64 overflow-y-auto py-1">
+            {filtered.length === 0 && (
+              <div className="px-2 py-1.5 text-[11px] text-white/45">
+                No matching parts.
+              </div>
+            )}
+            {filtered.map((it) => (
+              <button
+                key={it.id}
+                onClick={() => {
+                  drop(it.name, it.build());
+                  setOpen(false);
+                }}
+                className="w-full text-left px-2 py-1 text-xs hover:bg-white/10 flex items-center gap-2"
+              >
+                <span
+                  className="w-2.5 h-2.5 rounded-sm shrink-0"
+                  style={{ background: it.color }}
+                />
+                <span className="truncate flex-1">{it.name}</span>
+                <span className="text-[9px] uppercase text-white/35">
+                  {it.source === 'saved' ? 'mine' : it.category}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 

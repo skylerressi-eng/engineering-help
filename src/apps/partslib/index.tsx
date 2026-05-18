@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { getThumbnail } from '@/lib/modeler/thumbnail';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, Center } from '@react-three/drei';
 import { Search, Boxes, Download } from 'lucide-react';
@@ -380,12 +381,17 @@ function LibraryPanel() {
               } bg-black/35 hover:bg-black/55`}
             >
               <div
-                className="h-24 flex items-center justify-center"
+                className="h-24 relative flex items-center justify-center"
                 style={{
                   background: `radial-gradient(ellipse at 30% 30%, ${m.color}33 0%, transparent 60%), linear-gradient(135deg,#0b1020,#0f172a)`,
                 }}
               >
-                <Box size={34} style={{ color: m.color }} />
+                <Thumb
+                  cacheKey={`saved:${m.id}:${m.createdAt}`}
+                  build={() => geometryFromJSON(m.geom)}
+                  color={m.color}
+                  fallback={<Box size={34} style={{ color: m.color }} />}
+                />
               </div>
               <div className="p-2">
                 <div className="text-xs font-medium text-white truncate">{m.name}</div>
@@ -498,6 +504,61 @@ const CATEGORY_COLORS: Record<string, string> = {
   electronics: '#ec4899',
 };
 
+/**
+ * Real 3D thumbnail. Renders the actual geometry to an image (once, cached)
+ * via a single shared offscreen WebGL context. Only builds when scrolled near
+ * the viewport so a big grid stays responsive; shows `fallback` until ready.
+ */
+function Thumb({
+  cacheKey,
+  build,
+  color,
+  fallback,
+}: {
+  cacheKey: string;
+  build: () => THREE.BufferGeometry;
+  color?: string;
+  fallback: React.ReactNode;
+}) {
+  const [url, setUrl] = useState<string>('');
+  const ref = useRef<HTMLDivElement>(null);
+  const buildRef = useRef(build);
+  buildRef.current = build;
+
+  useEffect(() => {
+    setUrl('');
+    const el = ref.current;
+    if (!el) return;
+    let cancelled = false;
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) {
+          io.disconnect();
+          getThumbnail(cacheKey, buildRef.current, color).then((u) => {
+            if (!cancelled) setUrl(u);
+          });
+        }
+      },
+      { rootMargin: '200px' },
+    );
+    io.observe(el);
+    return () => {
+      cancelled = true;
+      io.disconnect();
+    };
+  }, [cacheKey, color]);
+
+  return (
+    <div ref={ref} className="absolute inset-0 flex items-center justify-center">
+      {url ? (
+        <img src={url} alt="" className="w-full h-full object-contain" />
+      ) : (
+        fallback
+      )}
+    </div>
+  );
+}
+
 function PartCard({
   part,
   selected,
@@ -507,7 +568,6 @@ function PartCard({
   selected: boolean;
   onClick: () => void;
 }) {
-  // Lightweight silhouette derived from category — no R3F per card.
   const accent = CATEGORY_COLORS[part.category] ?? '#94a3b8';
   return (
     <button
@@ -526,8 +586,13 @@ function PartCard({
             background: `radial-gradient(ellipse at 30% 30%, ${accent}33 0%, transparent 60%), linear-gradient(135deg, #0b1020 0%, #0f172a 100%)`,
           }}
         />
-        {/* category glyph */}
-        <PartSilhouette categoryId={part.category} accent={accent} />
+        {/* real 3D thumbnail (falls back to the category glyph) */}
+        <Thumb
+          cacheKey={`catalog:${part.id}`}
+          build={() => part.build(defaultParams(part))}
+          color={accent}
+          fallback={<PartSilhouette categoryId={part.category} accent={accent} />}
+        />
         {/* selected ring */}
         {selected && <div className="absolute inset-0 ring-2 ring-accent/40 rounded-xl pointer-events-none" />}
       </div>
