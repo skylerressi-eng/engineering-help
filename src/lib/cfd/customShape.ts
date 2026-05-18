@@ -105,6 +105,47 @@ export function parseOBJ(text: string): THREE.BufferGeometry {
   return g;
 }
 
+/** Parse a binary or ASCII STL into a BufferGeometry (positions only). */
+export function parseSTL(buf: ArrayBuffer): THREE.BufferGeometry {
+  const dv = new DataView(buf);
+  // Heuristic: ASCII STL starts with "solid" AND has no plausible binary tri count.
+  const head = new TextDecoder().decode(new Uint8Array(buf, 0, Math.min(80, buf.byteLength)));
+  const isAscii =
+    head.trimStart().toLowerCase().startsWith('solid') &&
+    buf.byteLength > 84 &&
+    dv.getUint32(80, true) * 50 + 84 !== buf.byteLength;
+
+  const positions: number[] = [];
+  if (isAscii) {
+    const text = new TextDecoder().decode(new Uint8Array(buf));
+    const re = /vertex\s+([-\d.eE+]+)\s+([-\d.eE+]+)\s+([-\d.eE+]+)/g;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(text))) {
+      positions.push(parseFloat(m[1]), parseFloat(m[2]), parseFloat(m[3]));
+    }
+  } else {
+    const tris = dv.getUint32(80, true);
+    let off = 84;
+    for (let i = 0; i < tris && off + 50 <= buf.byteLength; i++) {
+      off += 12; // skip normal
+      for (let v = 0; v < 3; v++) {
+        positions.push(
+          dv.getFloat32(off, true),
+          dv.getFloat32(off + 4, true),
+          dv.getFloat32(off + 8, true),
+        );
+        off += 12;
+      }
+      off += 2; // attribute byte count
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  g.computeVertexNormals();
+  g.computeBoundingBox();
+  return g;
+}
+
 /** Build a closed THREE.Shape from a silhouette (for the 2D viewport mesh). */
 export function silhouetteToShape(pts: Vec2[]): THREE.Shape {
   const s = new THREE.Shape();

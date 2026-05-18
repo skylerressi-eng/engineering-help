@@ -587,19 +587,21 @@ function ImportObjButton() {
     const f = e.target.files?.[0];
     if (!f) return;
     try {
-      const [{ parseOBJ }, t] = await Promise.all([
+      const [{ parseOBJ, parseSTL }, t] = await Promise.all([
         import('@/lib/cfd/customShape'),
         import('@/store/toastStore'),
       ]);
-      const geom = parseOBJ(await f.text());
+      const ext = f.name.toLowerCase().split('.').pop();
+      const geom =
+        ext === 'stl' ? parseSTL(await f.arrayBuffer()) : parseOBJ(await f.text());
       if (!geom.getAttribute('position') || geom.getAttribute('position').count < 3) {
-        t.toast.error('Import failed', 'No geometry found in that .obj.');
+        t.toast.error('Import failed', 'No geometry found in that file.');
         return;
       }
       geom.center();
       useModelerStore
         .getState()
-        .addCustomObject(f.name.replace(/\.obj$/i, ''), geom, { color: '#9aa6b8' });
+        .addCustomObject(f.name.replace(/\.(obj|stl)$/i, ''), geom, { color: '#9aa6b8' });
       t.toast.success('Imported', f.name);
     } catch (err) {
       const { toast } = await import('@/store/toastStore');
@@ -613,11 +615,11 @@ function ImportObjButton() {
       <button
         onClick={() => ref.current?.click()}
         className="flex items-center gap-1 px-2 h-6 rounded-md text-xs hover:bg-white/10"
-        title="Import a .obj model into the scene"
+        title="Import a CAD mesh (.obj or .stl) into the scene"
       >
         <Upload size={12} /> Import
       </button>
-      <input ref={ref} type="file" accept=".obj" hidden onChange={onFile} />
+      <input ref={ref} type="file" accept=".obj,.stl" hidden onChange={onFile} />
     </>
   );
 }

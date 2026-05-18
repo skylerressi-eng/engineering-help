@@ -20,8 +20,9 @@ const placeShapeLite = (v: Vec2[], chord: number, aoa: number): Vec2[] =>
   placeShape(v, { x: 0, y: 0 }, chord, aoa);
 import { useAppTools } from '@/hooks/useToolRegistry';
 import { publishAppState } from '@/ai/screenScanner';
-import { parseOBJ, extractSilhouette } from '@/lib/cfd/customShape';
+import { parseOBJ, parseSTL, extractSilhouette } from '@/lib/cfd/customShape';
 import { useModelerStore } from '@/store/modelerStore';
+import { useLibraryStore, geometryFromJSON } from '@/store/libraryStore';
 import { toast } from '@/store/toastStore';
 import Viewport from './Viewport';
 
@@ -64,13 +65,19 @@ function AeroSim({ appId }: { appId: string }) {
     const file = e.target.files?.[0];
     if (!file) return;
     try {
-      const text = await file.text();
-      const geom = parseOBJ(text);
+      const ext = file.name.toLowerCase().split('.').pop();
+      let geom;
+      if (ext === 'stl') geom = parseSTL(await file.arrayBuffer());
+      else geom = parseOBJ(await file.text());
       const sil = extractSilhouette(geom);
       if (sil.length < 3) {
         toast.error('Import failed', 'Could not extract a cross-section from that mesh.');
       } else {
-        setImported({ name: file.name.replace(/\.obj$/i, ''), silhouette: sil, geometry: geom });
+        setImported({
+          name: file.name.replace(/\.(obj|stl)$/i, ''),
+          silhouette: sil,
+          geometry: geom,
+        });
         toast.success('Model imported', `${file.name} — testing its silhouette in the flow.`);
       }
     } catch (err) {
@@ -85,7 +92,10 @@ function AeroSim({ appId }: { appId: string }) {
     const sel = m.selectedId ? m.objects.find((o) => o.id === m.selectedId) : null;
     const obj = sel ?? m.objects[m.objects.length - 1];
     if (!obj) {
-      toast.warn('Nothing to import', 'Open Modeler3D and select an object first.');
+      toast.warn(
+        'Modeler3D scene is empty',
+        'Build something in Modeler3D first, or use “From Library” for saved models.',
+      );
       return;
     }
     const sil = extractSilhouette(obj.geometry);
@@ -278,18 +288,35 @@ function AeroSim({ appId }: { appId: string }) {
         <button
           onClick={() => fileRef.current?.click()}
           className="flex items-center gap-1 px-2 h-6 rounded-md text-xs hover:bg-white/10"
-          title="Import a .obj model and test its cross-section"
+          title="Import a CAD mesh (.obj or .stl) and test its cross-section"
         >
-          <Upload size={12} /> Import .obj
+          <Upload size={12} /> Import file
         </button>
+        <LibraryImportMenu
+          onPick={(name, geom) => {
+            const sil = extractSilhouette(geom);
+            if (sil.length < 3) {
+              toast.error('Import failed', 'That model has no usable cross-section.');
+              return;
+            }
+            setImported({ name, silhouette: sil, geometry: geom });
+            toast.success('Imported from Library', `Testing "${name}".`);
+          }}
+        />
         <button
           onClick={importFromModeler}
           className="flex items-center gap-1 px-2 h-6 rounded-md text-xs hover:bg-white/10"
-          title="Pull the selected Modeler3D object"
+          title="Pull the current Modeler3D object"
         >
           <Box size={12} /> From Modeler3D
         </button>
-        <input ref={fileRef} type="file" accept=".obj" hidden onChange={onImportFile} />
+        <input
+          ref={fileRef}
+          type="file"
+          accept=".obj,.stl"
+          hidden
+          onChange={onImportFile}
+        />
         {source === 'import' && imported && (
           <div className="flex items-center gap-1.5 ml-1 px-2 h-6 rounded-md bg-accent/20 text-accent text-[11px]">
             <Box size={11} />
@@ -499,6 +526,52 @@ function AeroSim({ appId }: { appId: string }) {
         </div>
       </div>
       </div>
+    </div>
+  );
+}
+
+function LibraryImportMenu({
+  onPick,
+}: {
+  onPick: (name: string, geom: ReturnType<typeof geometryFromJSON>) => void;
+}) {
+  const models = useLibraryStore((s) => s.models);
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="flex items-center gap-1 px-2 h-6 rounded-md text-xs hover:bg-white/10"
+        title="Import a model you saved to the Library"
+      >
+        <Box size={12} /> From Library
+        <ChevronDown size={11} />
+      </button>
+      {open && (
+        <div className="absolute top-full left-0 mt-1 glass-strong rounded-md min-w-[200px] max-h-64 overflow-y-auto py-1 z-30 shadow-window">
+          {models.length === 0 && (
+            <div className="px-2 py-1.5 text-[11px] text-white/45">
+              No saved models. In Modeler3D click “Save to Library”.
+            </div>
+          )}
+          {models.map((m) => (
+            <button
+              key={m.id}
+              onClick={() => {
+                onPick(m.name, geometryFromJSON(m.geom));
+                setOpen(false);
+              }}
+              className="w-full text-left px-2 py-1 text-xs hover:bg-white/10 flex items-center gap-2"
+            >
+              <span
+                className="w-2.5 h-2.5 rounded-sm"
+                style={{ background: m.color }}
+              />
+              <span className="truncate">{m.name}</span>
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
