@@ -1,6 +1,11 @@
 import { create } from 'zustand';
-import { solveTruss, type FeaModel, type FeaResult } from '@/lib/fea/truss';
-import { FEA_PRESETS } from '@/lib/fea/presets';
+import {
+  solveTruss3D,
+  type FeaModel3D,
+  type FeaResult3D,
+  type TestType,
+} from '@/lib/fea/truss3d';
+import { FEA_PRESETS_3D } from '@/lib/fea/presets3d';
 import { getEngMaterial } from '@/lib/materials/engineering';
 
 let seq = 1;
@@ -9,41 +14,47 @@ const uid = (p: string) => `${p}${seq++}`;
 export type FeaTool = 'select' | 'node' | 'element' | 'support' | 'load';
 
 interface FeaStore {
-  model: FeaModel;
+  model: FeaModel3D;
   tool: FeaTool;
   selectedNode: string | null;
-  /** element-draw anchor */
   elementFrom: string | null;
-  result: FeaResult | null;
+  result: FeaResult3D | null;
   showDeformed: boolean;
   dispScale: number;
   E: number;
   area: number;
+  materialId: string;
+  yieldStress: number;
   rev: number;
 
   setTool: (t: FeaTool) => void;
-  addNode: (x: number, y: number) => string;
-  moveNode: (id: string, x: number, y: number) => void;
+  addNode: (x: number, y: number, z: number) => string;
+  moveNode: (id: string, x: number, y: number, z: number) => void;
   toggleSupport: (id: string) => void;
-  setLoad: (id: string, fx: number, fy: number) => void;
+  setLoad: (id: string, fx: number, fy: number, fz: number) => void;
   beginElement: (id: string) => void;
   finishElement: (id: string) => void;
   removeNode: (id: string) => void;
+  removeElement: (id: string) => void;
   select: (id: string | null) => void;
   setShowDeformed: (b: boolean) => void;
   setDispScale: (n: number) => void;
-  setE: (e: number) => void;
   setArea: (a: number) => void;
-  materialId: string;
-  yieldStress: number;
   setMaterial: (id: string) => void;
+  setTest: (t: TestType) => void;
+  setPressure: (p: number) => void;
+  setTribArea: (a: number) => void;
+  setPDir: (d: [number, number, number]) => void;
+  setDeltaT: (t: number) => void;
   loadPreset: (id: string) => void;
   clear: () => void;
-  solve: () => FeaResult;
+  solve: () => FeaResult3D;
 }
 
+const clone = (m: FeaModel3D): FeaModel3D => JSON.parse(JSON.stringify(m));
+
 export const useFeaStore = create<FeaStore>((set, get) => ({
-  model: FEA_PRESETS[0].model,
+  model: clone(FEA_PRESETS_3D[0].model),
   tool: 'select',
   selectedNode: null,
   elementFrom: null,
@@ -58,24 +69,31 @@ export const useFeaStore = create<FeaStore>((set, get) => ({
 
   setTool: (t) => set({ tool: t, elementFrom: null }),
 
-  addNode: (x, y) => {
+  addNode: (x, y, z) => {
     const id = uid('n');
     set((s) => ({
       model: {
         ...s.model,
-        nodes: [...s.model.nodes, { id, x, y, fixX: false, fixY: false }],
+        nodes: [
+          ...s.model.nodes,
+          { id, x, y, z, fixX: false, fixY: false, fixZ: false },
+        ],
       },
+      result: null,
       rev: s.rev + 1,
     }));
     return id;
   },
 
-  moveNode: (id, x, y) =>
+  moveNode: (id, x, y, z) =>
     set((s) => ({
       model: {
         ...s.model,
-        nodes: s.model.nodes.map((n) => (n.id === id ? { ...n, x, y } : n)),
+        nodes: s.model.nodes.map((n) =>
+          n.id === id ? { ...n, x, y, z } : n,
+        ),
       },
+      result: null,
       rev: s.rev + 1,
     })),
 
@@ -85,9 +103,9 @@ export const useFeaStore = create<FeaStore>((set, get) => ({
         ...s.model,
         nodes: s.model.nodes.map((n) =>
           n.id === id
-            ? n.fixX && n.fixY
-              ? { ...n, fixX: false, fixY: false }
-              : { ...n, fixX: true, fixY: true }
+            ? n.fixX && n.fixY && n.fixZ
+              ? { ...n, fixX: false, fixY: false, fixZ: false }
+              : { ...n, fixX: true, fixY: true, fixZ: true }
             : n,
         ),
       },
@@ -95,11 +113,16 @@ export const useFeaStore = create<FeaStore>((set, get) => ({
       rev: s.rev + 1,
     })),
 
-  setLoad: (id, fx, fy) =>
+  setLoad: (id, fx, fy, fz) =>
     set((s) => {
       const loads = s.model.loads.filter((l) => l.node !== id);
-      if (fx !== 0 || fy !== 0) loads.push({ node: id, fx, fy });
-      return { model: { ...s.model, loads }, result: null, rev: s.rev + 1 };
+      if (fx !== 0 || fy !== 0 || fz !== 0)
+        loads.push({ node: id, fx, fy, fz });
+      return {
+        model: { ...s.model, loads },
+        result: null,
+        rev: s.rev + 1,
+      };
     }),
 
   beginElement: (id) => set({ elementFrom: id }),
@@ -113,14 +136,17 @@ export const useFeaStore = create<FeaStore>((set, get) => ({
       (e) => (e.a === from && e.b === id) || (e.a === id && e.b === from),
     );
     if (!exists) {
+      const { E, area } = get();
+      const mat = getEngMaterial(get().materialId);
       set((s) => ({
         model: {
           ...s.model,
           elements: [
             ...s.model.elements,
-            { id: uid('e'), a: from, b: id, E: s.E, A: s.area },
+            { id: uid('e'), a: from, b: id, E, A: area, alpha: mat.alpha },
           ],
         },
+        result: null,
         rev: s.rev + 1,
       }));
     }
@@ -130,8 +156,11 @@ export const useFeaStore = create<FeaStore>((set, get) => ({
   removeNode: (id) =>
     set((s) => ({
       model: {
+        ...s.model,
         nodes: s.model.nodes.filter((n) => n.id !== id),
-        elements: s.model.elements.filter((e) => e.a !== id && e.b !== id),
+        elements: s.model.elements.filter(
+          (e) => e.a !== id && e.b !== id,
+        ),
         loads: s.model.loads.filter((l) => l.node !== id),
       },
       selectedNode: s.selectedNode === id ? null : s.selectedNode,
@@ -139,35 +168,104 @@ export const useFeaStore = create<FeaStore>((set, get) => ({
       rev: s.rev + 1,
     })),
 
+  removeElement: (id) =>
+    set((s) => ({
+      model: {
+        ...s.model,
+        elements: s.model.elements.filter((e) => e.id !== id),
+      },
+      result: null,
+      rev: s.rev + 1,
+    })),
+
   select: (id) => set({ selectedNode: id }),
   setShowDeformed: (b) => set({ showDeformed: b }),
   setDispScale: (n) => set({ dispScale: Math.max(1, Math.min(1e7, n)) }),
-  setE: (e) => set({ E: e }),
-  setArea: (a) => set({ area: a }),
+  setArea: (a) =>
+    set((s) => ({
+      area: a,
+      model: {
+        ...s.model,
+        elements: s.model.elements.map((e) => ({ ...e, A: a })),
+      },
+      result: null,
+      rev: s.rev + 1,
+    })),
+
   setMaterial: (id) => {
     const m = getEngMaterial(id);
     set((s) => ({
       materialId: id,
       E: m.E,
       yieldStress: m.yield,
-      // Re-skin every existing member with the new modulus.
       model: {
         ...s.model,
-        elements: s.model.elements.map((e) => ({ ...e, E: m.E })),
+        elements: s.model.elements.map((e) => ({
+          ...e,
+          E: m.E,
+          alpha: m.alpha,
+        })),
       },
       result: null,
       rev: s.rev + 1,
     }));
   },
 
+  setTest: (t) =>
+    set((s) => ({
+      model: { ...s.model, test: t },
+      result: null,
+      rev: s.rev + 1,
+    })),
+  setPressure: (p) =>
+    set((s) => ({
+      model: { ...s.model, pressure: p },
+      result: null,
+      rev: s.rev + 1,
+    })),
+  setTribArea: (a) =>
+    set((s) => ({
+      model: { ...s.model, tribArea: a },
+      result: null,
+      rev: s.rev + 1,
+    })),
+  setPDir: (d) =>
+    set((s) => ({
+      model: { ...s.model, pDir: d },
+      result: null,
+      rev: s.rev + 1,
+    })),
+  setDeltaT: (t) =>
+    set((s) => ({
+      model: { ...s.model, deltaT: t },
+      result: null,
+      rev: s.rev + 1,
+    })),
+
   loadPreset: (id) => {
-    const p = FEA_PRESETS.find((x) => x.id === id);
-    if (p) set((s) => ({ model: JSON.parse(JSON.stringify(p.model)), result: null, rev: s.rev + 1 }));
+    const p = FEA_PRESETS_3D.find((x) => x.id === id);
+    if (p)
+      set((s) => ({
+        model: clone(p.model),
+        result: null,
+        selectedNode: null,
+        elementFrom: null,
+        rev: s.rev + 1,
+      }));
   },
 
   clear: () =>
     set((s) => ({
-      model: { nodes: [], elements: [], loads: [] },
+      model: {
+        nodes: [],
+        elements: [],
+        loads: [],
+        test: s.model.test,
+        pressure: s.model.pressure,
+        tribArea: s.model.tribArea,
+        pDir: s.model.pDir,
+        deltaT: s.model.deltaT,
+      },
       result: null,
       selectedNode: null,
       elementFrom: null,
@@ -175,10 +273,7 @@ export const useFeaStore = create<FeaStore>((set, get) => ({
     })),
 
   solve: () => {
-    const r = solveTruss(get().model);
-    // Auto-fit the deformed-shape scale so the largest displacement draws as
-    // ~0.6 m on the model (real truss deflections are sub-millimetre, so a
-    // fixed scale made the deformation invisible).
+    const r = solveTruss3D(get().model);
     if (!r.unstable && r.maxDisp > 0) {
       set({ dispScale: Math.max(1, Math.min(1e7, 0.6 / r.maxDisp)) });
     }
