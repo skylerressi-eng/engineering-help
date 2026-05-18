@@ -113,7 +113,47 @@ export function solveBeam(inp: BeamInput): BeamResult {
   };
 }
 
-/** Rectangular section helper: I = b·h³/12, c = h/2. */
-export function rectSection(b: number, h: number) {
-  return { I: (b * h * h * h) / 12, c: h / 2 };
+export interface SectionProps {
+  /** second moment of area (m⁴) */
+  I: number;
+  /** extreme-fibre distance (m) */
+  c: number;
+  /** cross-sectional area (m²) */
+  area: number;
+}
+
+/** Rectangular section: I = b·h³/12, c = h/2. */
+export function rectSection(b: number, h: number): SectionProps {
+  return { I: (b * h * h * h) / 12, c: h / 2, area: b * h };
+}
+
+/** Solid circular section of diameter d. */
+export function circleSection(d: number): SectionProps {
+  const r = d / 2;
+  return { I: (Math.PI * Math.pow(d, 4)) / 64, c: r, area: Math.PI * r * r };
+}
+
+/** Hollow circular (pipe): outer diameter d, wall thickness t. */
+export function pipeSection(d: number, t: number): SectionProps {
+  const di = Math.max(0, d - 2 * t);
+  const I = (Math.PI * (Math.pow(d, 4) - Math.pow(di, 4))) / 64;
+  const area = (Math.PI / 4) * (d * d - di * di);
+  return { I, c: d / 2, area };
+}
+
+/**
+ * Symmetric I-beam: total height h, flange width bf, flange thickness tf,
+ * web thickness tw. I about the strong (bending) axis.
+ */
+export function iSection(
+  h: number,
+  bf: number,
+  tf: number,
+  tw: number,
+): SectionProps {
+  const hw = Math.max(0, h - 2 * tf); // web height
+  const Iouter = (bf * h * h * h) / 12;
+  const Icut = ((bf - tw) * hw * hw * hw) / 12;
+  const area = bf * h - (bf - tw) * hw;
+  return { I: Iouter - Icut, c: h / 2, area };
 }

@@ -368,6 +368,7 @@ function PhysicsBench({ appId }: { appId: string }) {
               ['aabb', 'AABB'],
               ['contacts', 'contacts'],
               ['sleep', 'sleep'],
+              ['trails', 'trails'],
             ] as const
           ).map(([k, label]) => (
             <label key={k} className="flex items-center gap-1">
@@ -402,6 +403,27 @@ function PhysicsBench({ appId }: { appId: string }) {
             onChange={(v) => setIterations(Math.round(v))}
             step={1}
           />
+          <div className="grid grid-cols-3 gap-1 mt-2">
+            {(
+              [
+                ['Earth', 9.81],
+                ['Moon', 1.62],
+                ['Mars', 3.71],
+                ['Jupiter', 24.8],
+                ['Zero-g', 0],
+                ['Up', -9.81],
+              ] as [string, number][]
+            ).map(([label, g]) => (
+              <button
+                key={label}
+                onClick={() => setGravity(0, g)}
+                className="py-1 rounded-md text-[10px] bg-white/5 hover:bg-white/10"
+                title={`gravity = (0, ${g}) m/s²`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
 
         <div className="p-3 flex-1 overflow-y-auto">

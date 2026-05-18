@@ -43,6 +43,11 @@ export default function Renderer() {
   const drawRef = useRef<() => void>(() => {});
   drawRef.current = draw;
 
+  // Per-body position history for the trails overlay
+  const trailsRef = useRef<Map<string, number[]>>(new Map());
+  const fpsRef = useRef(60);
+  const simTimeRef = useRef(0);
+
   // Animation loop
   useEffect(() => {
     let raf = 0;
@@ -50,6 +55,8 @@ export default function Renderer() {
     const tick = (now: number) => {
       const dt = Math.min(1 / 30, (now - last) / 1000);
       last = now;
+      fpsRef.current = fpsRef.current * 0.9 + (1 / Math.max(dt, 1e-4)) * 0.1;
+      if (usePhysicsBenchStore.getState().running) simTimeRef.current += dt;
       step(dt);
       drawRef.current();
       raf = requestAnimationFrame(tick);
@@ -307,6 +314,37 @@ export default function Renderer() {
       ctx.fill();
     }
 
+    // Motion trails
+    const trails = trailsRef.current;
+    if (debug.trails) {
+      const live = new Set<string>();
+      for (const b of world.bodies) {
+        if (b.isStatic) continue;
+        live.add(b.id);
+        let buf = trails.get(b.id);
+        if (!buf) {
+          buf = [];
+          trails.set(b.id, buf);
+        }
+        buf.push(b.pos.x, b.pos.y);
+        if (buf.length > 240) buf.splice(0, buf.length - 240);
+      }
+      for (const [id, buf] of trails) {
+        if (!live.has(id) || buf.length < 4) continue;
+        const b = world.bodies.find((x) => x.id === id);
+        ctx.strokeStyle = b ? b.color : '#64748b';
+        ctx.globalAlpha = 0.35;
+        ctx.lineWidth = 1.6 / scale;
+        ctx.beginPath();
+        ctx.moveTo(buf[0], buf[1]);
+        for (let i = 2; i < buf.length; i += 2) ctx.lineTo(buf[i], buf[i + 1]);
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
+    } else if (trails.size) {
+      trails.clear();
+    }
+
     // Bodies
     for (const b of world.bodies) {
       ctx.save();
@@ -397,14 +435,25 @@ export default function Renderer() {
 
     ctx.restore();
 
-    // Overlay text (stats)
-    ctx.fillStyle = 'rgba(255,255,255,0.7)';
-    ctx.font = '11px "JetBrains Mono", monospace';
+    // Overlay HUD
+    let ke = 0;
+    for (const b of world.bodies) {
+      if (b.isStatic) continue;
+      const v2 = b.vel.x * b.vel.x + b.vel.y * b.vel.y;
+      ke += 0.5 * b.mass * v2 + 0.5 * b.inertia * b.angularVel * b.angularVel;
+    }
     const s = world.stats;
-    ctx.fillText(
-      `bodies ${s.bodies}  pairs ${s.pairs}  contacts ${s.contacts}  awake ${s.awakeBodies}`,
-      10,
-      r.height - 12,
+    ctx.font = '11px "JetBrains Mono", monospace';
+    const lines = [
+      `${fpsRef.current.toFixed(0)} fps   t ${simTimeRef.current.toFixed(1)} s`,
+      `bodies ${s.bodies}  awake ${s.awakeBodies}  contacts ${s.contacts}`,
+      `KE ${ke > 9999 ? ke.toExponential(2) : ke.toFixed(1)} J   g ${Math.hypot(world.gravity.x, world.gravity.y).toFixed(2)} m/s²`,
+    ];
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    ctx.fillRect(8, r.height - 58, 256, 50);
+    ctx.fillStyle = 'rgba(255,255,255,0.8)';
+    lines.forEach((ln, i) =>
+      ctx.fillText(ln, 14, r.height - 42 + i * 15),
     );
   }
 

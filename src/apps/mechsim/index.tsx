@@ -4,8 +4,12 @@ import type { AppModule } from '@/os/types';
 import {
   solveBeam,
   rectSection,
+  circleSection,
+  pipeSection,
+  iSection,
   type BeamSupport,
   type BeamResult,
+  type SectionProps,
 } from '@/lib/mech/beam';
 import { solveThermal } from '@/lib/mech/thermal';
 import { ENG_MATERIALS, getEngMaterial } from '@/lib/materials/engineering';
@@ -16,28 +20,196 @@ import { publishAppState } from '@/ai/screenScanner';
 type Tab = 'structural' | 'thermal';
 
 /* ---------------- Structural (beam) ---------------- */
+type SectionKind = 'rect' | 'circle' | 'pipe' | 'ibeam';
+
+const SECTION_LABELS: Record<SectionKind, string> = {
+  rect: 'Rectangle',
+  circle: 'Solid round',
+  pipe: 'Pipe (hollow)',
+  ibeam: 'I-beam',
+};
+
+function BeamDiagram({
+  support,
+  L,
+  a,
+  P,
+  w,
+  res,
+  defScale,
+}: {
+  support: BeamSupport;
+  L: number;
+  a: number;
+  P: number;
+  w: number;
+  res: BeamResult;
+  defScale: number;
+}) {
+  const W = 560;
+  const H = 200;
+  const m = 60;
+  const x0 = m;
+  const x1 = W - m;
+  const yMid = H / 2;
+  const sx = (xm: number) => x0 + (xm / L) * (x1 - x0);
+  const defMax = res.maxDeflection || 1e-9;
+  // Deflected centre-line: positive v = downward (screen +y)
+  const path = res.x
+    .map((xm, i) => {
+      const px = sx(xm);
+      const py =
+        yMid + (res.deflection[i] / defMax) * 34 * defScale;
+      return `${i === 0 ? 'M' : 'L'} ${px.toFixed(1)},${py.toFixed(1)}`;
+    })
+    .join(' ');
+  const ap = sx(Math.min(a, L));
+  return (
+    <svg
+      width="100%"
+      viewBox={`0 0 ${W} ${H}`}
+      className="bg-black/30 rounded-md"
+    >
+      {/* undeformed beam */}
+      <rect
+        x={x0}
+        y={yMid - 6}
+        width={x1 - x0}
+        height={12}
+        fill="rgba(255,255,255,0.10)"
+        stroke="rgba(255,255,255,0.25)"
+      />
+      {/* deflected shape */}
+      <path d={path} fill="none" stroke="#22d3ee" strokeWidth={2.4} />
+      {/* supports */}
+      {support === 'cantilever' ? (
+        <g stroke="#94a3b8" strokeWidth={1.5}>
+          <line x1={x0} y1={yMid - 26} x2={x0} y2={yMid + 26} />
+          {Array.from({ length: 7 }).map((_, i) => (
+            <line
+              key={i}
+              x1={x0}
+              y1={yMid - 24 + i * 8}
+              x2={x0 - 9}
+              y2={yMid - 16 + i * 8}
+            />
+          ))}
+        </g>
+      ) : (
+        <g fill="#94a3b8" stroke="#94a3b8">
+          <polygon
+            points={`${x0},${yMid + 6} ${x0 - 11},${yMid + 24} ${x0 + 11},${yMid + 24}`}
+            fillOpacity={0.5}
+          />
+          <polygon
+            points={`${x1},${yMid + 6} ${x1 - 11},${yMid + 24} ${x1 + 11},${yMid + 24}`}
+            fillOpacity={0.5}
+          />
+          <circle cx={x1 - 6} cy={yMid + 28} r={3} fillOpacity={0.7} />
+          <circle cx={x1 + 6} cy={yMid + 28} r={3} fillOpacity={0.7} />
+        </g>
+      )}
+      {/* UDL */}
+      {w !== 0 && (
+        <g stroke="#a78bfa" strokeWidth={1.3} fill="#a78bfa">
+          <line x1={x0} y1={yMid - 40} x2={x1} y2={yMid - 40} />
+          {Array.from({ length: 11 }).map((_, i) => {
+            const px = x0 + (i / 10) * (x1 - x0);
+            return (
+              <line key={i} x1={px} y1={yMid - 40} x2={px} y2={yMid - 8} />
+            );
+          })}
+          <text x={x1 - 4} y={yMid - 46} fontSize={10} stroke="none">
+            w {w} N/m
+          </text>
+        </g>
+      )}
+      {/* point load */}
+      {P !== 0 && (
+        <g stroke="#f59e0b" strokeWidth={2} fill="#f59e0b">
+          <line x1={ap} y1={yMid - 56} x2={ap} y2={yMid - 8} />
+          <polygon
+            points={`${ap},${yMid - 8} ${ap - 5},${yMid - 18} ${ap + 5},${yMid - 18}`}
+            stroke="none"
+          />
+          <text
+            x={ap + 6}
+            y={yMid - 48}
+            fontSize={10}
+            stroke="none"
+          >
+            P {(P / 1000).toFixed(1)} kN
+          </text>
+        </g>
+      )}
+      <text x={x0} y={H - 8} fontSize={9} fill="rgba(255,255,255,0.4)">
+        0
+      </text>
+      <text
+        x={x1}
+        y={H - 8}
+        fontSize={9}
+        fill="rgba(255,255,255,0.4)"
+        textAnchor="end"
+      >
+        L = {L} m
+      </text>
+    </svg>
+  );
+}
+
 function StructuralTab() {
   const [support, setSupport] = useState<BeamSupport>('cantilever');
   const [L, setL] = useState(3);
+  const [section, setSection] = useState<SectionKind>('rect');
+  // generic dimension state shared across sections (mm in UI → m in solver)
   const [b, setB] = useState(0.05);
   const [h, setH] = useState(0.1);
+  const [dia, setDia] = useState(0.08);
+  const [wall, setWall] = useState(0.005);
+  const [bf, setBf] = useState(0.08);
+  const [tf, setTf] = useState(0.008);
+  const [tw, setTw] = useState(0.006);
   const [matId, setMatId] = useState('steel-mild');
   const [P, setP] = useState(2000);
   const [a, setA] = useState(3);
   const [w, setW] = useState(500);
+  const [SF, setSF] = useState(1.5);
+  const [defScale, setDefScale] = useState(1);
 
   const mat = getEngMaterial(matId);
   const E = mat.E;
 
-  const res: BeamResult = useMemo(() => {
-    const { I, c } = rectSection(b, h);
-    return solveBeam({ support, L, E, I, c, P, a: Math.min(a, L), w });
-  }, [support, L, b, h, E, P, a, w]);
+  const sec: SectionProps = useMemo(() => {
+    if (section === 'circle') return circleSection(dia);
+    if (section === 'pipe') return pipeSection(dia, wall);
+    if (section === 'ibeam') return iSection(h, bf, tf, tw);
+    return rectSection(b, h);
+  }, [section, b, h, dia, wall, bf, tf, tw]);
 
-  const utilisation = res.maxStress / mat.yield; // 1.0 = at yield
+  const res: BeamResult = useMemo(
+    () =>
+      solveBeam({
+        support,
+        L,
+        E,
+        I: sec.I,
+        c: sec.c,
+        P,
+        a: Math.min(a, L),
+        w,
+      }),
+    [support, L, E, sec, P, a, w],
+  );
+
+  const allowable = mat.yield / SF;
+  const utilisation = res.maxStress / allowable; // 1.0 = at the allowable
+  const fos = res.maxStress > 0 ? mat.yield / res.maxStress : Infinity;
+  const massPerM = sec.area * mat.density;
+  const S = sec.c > 0 ? sec.I / sec.c : 0;
 
   const W = 520;
-  const H = 120;
+  const H = 110;
   const plot = (vals: number[], color: string) => {
     const max = Math.max(...vals.map(Math.abs), 1e-9);
     const d = vals
@@ -47,8 +219,18 @@ function StructuralTab() {
       )
       .join(' ');
     return (
-      <svg width="100%" viewBox={`0 0 ${W} ${H}`} className="bg-black/30 rounded-md">
-        <line x1={0} y1={H / 2} x2={W} y2={H / 2} stroke="rgba(255,255,255,0.2)" />
+      <svg
+        width="100%"
+        viewBox={`0 0 ${W} ${H}`}
+        className="bg-black/30 rounded-md"
+      >
+        <line
+          x1={0}
+          y1={H / 2}
+          x2={W}
+          y2={H / 2}
+          stroke="rgba(255,255,255,0.2)"
+        />
         <path d={d} fill="none" stroke={color} strokeWidth={1.6} />
       </svg>
     );
@@ -57,21 +239,52 @@ function StructuralTab() {
   return (
     <div className="flex h-full">
       <div className="flex-1 p-4 overflow-y-auto space-y-4">
-        <Block title={`Deflection — max ${res.maxDeflection.toExponential(3)} m`}>
+        <Block title="Beam & deflected shape (exaggerated)">
+          <BeamDiagram
+            support={support}
+            L={L}
+            a={a}
+            P={P}
+            w={w}
+            res={res}
+            defScale={defScale}
+          />
+          <div className="flex items-center gap-2 mt-1 text-[10px] text-white/55">
+            <span>deflection ×{defScale}</span>
+            {[1, 5, 20, 100].map((f) => (
+              <button
+                key={f}
+                onClick={() => setDefScale(f)}
+                className={`px-1.5 rounded ${defScale === f ? 'bg-accent text-white' : 'hover:bg-white/10'}`}
+              >
+                ×{f}
+              </button>
+            ))}
+          </div>
+        </Block>
+        <Block
+          title={`Deflection — max ${(res.maxDeflection * 1000).toFixed(3)} mm`}
+        >
           {plot(res.deflection, '#22d3ee')}
         </Block>
-        <Block title={`Bending Moment — max ${(res.maxMoment / 1000).toFixed(2)} kN·m`}>
+        <Block
+          title={`Bending Moment — max ${(res.maxMoment / 1000).toFixed(2)} kN·m`}
+        >
           {plot(res.moment, '#f59e0b')}
         </Block>
-        <Block title={`Shear Force — max ${(Math.max(...res.shear.map(Math.abs)) / 1000).toFixed(2)} kN`}>
+        <Block
+          title={`Shear Force — max ${(Math.max(...res.shear.map(Math.abs)) / 1000).toFixed(2)} kN`}
+        >
           {plot(res.shear, '#a78bfa')}
         </Block>
-        <Block title={`Bending Stress — max ${(res.maxStress / 1e6).toFixed(1)} MPa`}>
+        <Block
+          title={`Bending Stress — max ${(res.maxStress / 1e6).toFixed(1)} MPa`}
+        >
           {plot(res.stress, '#ef4444')}
         </Block>
       </div>
       <div className="w-60 shrink-0 border-l border-white/10 bg-black/25 p-3 chrome overflow-y-auto space-y-2">
-        <div className="text-[10px] uppercase text-white/45">Beam</div>
+        <div className="text-[10px] uppercase text-white/45">Support</div>
         <div className="flex gap-1">
           {(['cantilever', 'simple'] as BeamSupport[]).map((s) => (
             <button
@@ -81,7 +294,9 @@ function StructuralTab() {
                 if (s === 'cantilever') setA(L);
               }}
               className={`flex-1 py-1 rounded-md text-[11px] ${
-                support === s ? 'bg-accent text-white' : 'bg-white/5 hover:bg-white/10'
+                support === s
+                  ? 'bg-accent text-white'
+                  : 'bg-white/5 hover:bg-white/10'
               }`}
             >
               {s}
@@ -89,10 +304,52 @@ function StructuralTab() {
           ))}
         </div>
         <Num label="L (m)" value={L} onChange={setL} step={0.1} />
-        <Num label="b (m)" value={b} onChange={setB} step={0.005} />
-        <Num label="h (m)" value={h} onChange={setH} step={0.005} />
+
+        <div className="text-[10px] uppercase text-white/45 pt-1">
+          Cross-section
+        </div>
+        <select
+          value={section}
+          onChange={(e) => setSection(e.target.value as SectionKind)}
+          className="w-full bg-white/5 border border-white/10 rounded-md px-2 py-1 text-xs outline-none"
+        >
+          {(Object.keys(SECTION_LABELS) as SectionKind[]).map((k) => (
+            <option key={k} value={k} className="bg-zinc-800">
+              {SECTION_LABELS[k]}
+            </option>
+          ))}
+        </select>
+        {section === 'rect' && (
+          <>
+            <Num label="b (m)" value={b} onChange={setB} step={0.005} />
+            <Num label="h (m)" value={h} onChange={setH} step={0.005} />
+          </>
+        )}
+        {section === 'circle' && (
+          <Num label="d (m)" value={dia} onChange={setDia} step={0.005} />
+        )}
+        {section === 'pipe' && (
+          <>
+            <Num label="d (m)" value={dia} onChange={setDia} step={0.005} />
+            <Num label="t (m)" value={wall} onChange={setWall} step={0.001} />
+          </>
+        )}
+        {section === 'ibeam' && (
+          <>
+            <Num label="h (m)" value={h} onChange={setH} step={0.005} />
+            <Num label="bf (m)" value={bf} onChange={setBf} step={0.005} />
+            <Num label="tf (m)" value={tf} onChange={setTf} step={0.001} />
+            <Num label="tw (m)" value={tw} onChange={setTw} step={0.001} />
+          </>
+        )}
+        <div className="text-[10px] text-white/45 font-mono">
+          I {sec.I.toExponential(2)} m⁴ · S {S.toExponential(2)} m³
+        </div>
+
         <div>
-          <div className="text-[10px] uppercase text-white/45 mb-1">Material</div>
+          <div className="text-[10px] uppercase text-white/45 mb-1 pt-1">
+            Material
+          </div>
           <select
             value={matId}
             onChange={(e) => setMatId(e.target.value)}
@@ -105,19 +362,34 @@ function StructuralTab() {
             ))}
           </select>
           <div className="text-[10px] text-white/45 mt-1 font-mono">
-            E {(mat.E / 1e9).toFixed(0)} GPa · σy {(mat.yield / 1e6).toFixed(0)} MPa
+            E {(mat.E / 1e9).toFixed(0)} GPa · σy{' '}
+            {(mat.yield / 1e6).toFixed(0)} MPa · {massPerM.toFixed(1)} kg/m
           </div>
         </div>
         <div className="text-[10px] uppercase text-white/45 pt-1">Loads</div>
         <Num label="P (N)" value={P} onChange={setP} step={100} />
         <Num label="a (m)" value={a} onChange={setA} step={0.1} />
         <Num label="w (N/m)" value={w} onChange={setW} step={50} />
+        <Num
+          label="safety n"
+          value={SF}
+          onChange={(v) => setSF(Math.max(1, v))}
+          step={0.1}
+        />
         <div className="pt-2 border-t border-white/10 mt-1">
-          <div className="text-[10px] uppercase text-white/45 mb-1">Results</div>
+          <div className="text-[10px] uppercase text-white/45 mb-1">
+            Results
+          </div>
           <div className="text-[11px] font-mono text-white/80 space-y-0.5">
             <div className="flex justify-between">
               <span className="text-white/55">max δ</span>
               <span>{(res.maxDeflection * 1000).toFixed(3)} mm</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-white/55">δ / L</span>
+              <span>
+                L/{(L / (res.maxDeflection || 1e-9)).toFixed(0)}
+              </span>
             </div>
             <div className="flex justify-between">
               <span className="text-white/55">max M</span>
@@ -126,10 +398,16 @@ function StructuralTab() {
             <div className="flex justify-between">
               <span className="text-white/55">max σ</span>
               <span
-                className={utilisation >= 1 ? 'text-traffic-red' : 'text-emerald-300'}
+                className={
+                  utilisation >= 1 ? 'text-traffic-red' : 'text-emerald-300'
+                }
               >
                 {(res.maxStress / 1e6).toFixed(1)} MPa
               </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-white/55">σ allow</span>
+              <span>{(allowable / 1e6).toFixed(1)} MPa</span>
             </div>
             <div className="flex justify-between">
               <span className="text-white/55">utilisation</span>
@@ -137,13 +415,17 @@ function StructuralTab() {
                 className={
                   utilisation >= 1
                     ? 'text-traffic-red'
-                    : utilisation > 0.66
+                    : utilisation > 0.85
                       ? 'text-amber-400'
                       : 'text-emerald-300'
                 }
               >
-                {(utilisation * 100).toFixed(0)}% σy
+                {(utilisation * 100).toFixed(0)}%
               </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-white/55">FoS</span>
+              <span>{fos === Infinity ? '∞' : fos.toFixed(2)}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-white/55">R₀</span>
@@ -162,11 +444,17 @@ function StructuralTab() {
               </div>
             )}
           </div>
-          {utilisation >= 1 && (
-            <div className="mt-1 text-[10px] text-traffic-red">
-              ⚠ stress exceeds {mat.label} yield ({(mat.yield / 1e6).toFixed(0)} MPa) — it would fail
-            </div>
-          )}
+          <div
+            className={`mt-2 text-center text-[11px] py-1 rounded-md ${
+              utilisation >= 1
+                ? 'bg-traffic-red/20 text-traffic-red'
+                : 'bg-emerald-500/15 text-emerald-300'
+            }`}
+          >
+            {utilisation >= 1
+              ? `✗ FAILS — σ exceeds σy/${SF}`
+              : `✓ PASSES at n = ${SF}`}
+          </div>
         </div>
       </div>
     </div>
@@ -174,6 +462,17 @@ function StructuralTab() {
 }
 
 /* ---------------- Thermal ---------------- */
+const THERMAL_PRESETS: {
+  id: string;
+  label: string;
+  v: { top: number; bottom: number; left: number; right: number; source: number; sx: number; sy: number };
+}[] = [
+  { id: 'plate', label: 'Hot plate', v: { top: 20, bottom: 120, left: 20, right: 20, source: 0, sx: 0.5, sy: 0.5 } },
+  { id: 'corner', label: 'Corner heat', v: { top: 150, bottom: 20, left: 150, right: 20, source: 0, sx: 0.5, sy: 0.5 } },
+  { id: 'chip', label: 'Chip + sink', v: { top: 25, bottom: 25, left: 25, right: 25, source: 220, sx: 0.5, sy: 0.7 } },
+  { id: 'gradient', label: 'L–R gradient', v: { top: 60, bottom: 60, left: 150, right: 10, source: 0, sx: 0.5, sy: 0.5 } },
+];
+
 function ThermalTab() {
   const [top, setTop] = useState(20);
   const [bottom, setBottom] = useState(120);
@@ -182,7 +481,21 @@ function ThermalTab() {
   const [source, setSource] = useState(0);
   const [sx, setSx] = useState(0.5);
   const [sy, setSy] = useState(0.5);
+  const [probe, setProbe] = useState<{ u: number; v: number; t: number } | null>(
+    null,
+  );
   const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  const applyPreset = (p: (typeof THERMAL_PRESETS)[number]) => {
+    setTop(p.v.top);
+    setBottom(p.v.bottom);
+    setLeft(p.v.left);
+    setRight(p.v.right);
+    setSource(p.v.source);
+    setSx(p.v.sx);
+    setSy(p.v.sy);
+    setProbe(null);
+  };
 
   const result = useMemo(
     () =>
@@ -237,9 +550,29 @@ function ThermalTab() {
       <div className="flex-1 p-4 flex flex-col items-center justify-center gap-3">
         <canvas
           ref={canvasRef}
-          className="rounded-lg border border-white/10"
+          className="rounded-lg border border-white/10 cursor-crosshair"
           style={{ width: '90%', maxWidth: 640, imageRendering: 'auto' }}
+          onClick={(e) => {
+            const r = (e.target as HTMLCanvasElement).getBoundingClientRect();
+            const u = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
+            const v = Math.min(1, Math.max(0, (e.clientY - r.top) / r.height));
+            const ix = Math.min(
+              result.nx - 1,
+              Math.round(u * (result.nx - 1)),
+            );
+            const iy = Math.min(
+              result.ny - 1,
+              Math.round(v * (result.ny - 1)),
+            );
+            setProbe({ u, v, t: result.T[iy * result.nx + ix] });
+          }}
         />
+        {probe && (
+          <div className="text-[11px] font-mono text-amber-300">
+            probe @ ({probe.u.toFixed(2)}, {probe.v.toFixed(2)}) ={' '}
+            {probe.t.toFixed(1)} °C
+          </div>
+        )}
         <div className="flex items-center gap-2 text-[11px] text-white/65">
           <span>{result.min.toFixed(1)}°C</span>
           <div
@@ -253,7 +586,19 @@ function ThermalTab() {
         </div>
       </div>
       <div className="w-60 shrink-0 border-l border-white/10 bg-black/25 p-3 chrome overflow-y-auto space-y-2">
-        <div className="text-[10px] uppercase text-white/45">Edge temperatures (°C)</div>
+        <div className="text-[10px] uppercase text-white/45">Presets</div>
+        <div className="grid grid-cols-2 gap-1">
+          {THERMAL_PRESETS.map((p) => (
+            <button
+              key={p.id}
+              onClick={() => applyPreset(p)}
+              className="py-1 rounded-md text-[10px] bg-white/5 hover:bg-white/10"
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
+        <div className="text-[10px] uppercase text-white/45 pt-1">Edge temperatures (°C)</div>
         <Num label="Top" value={top} onChange={setTop} step={5} />
         <Num label="Bottom" value={bottom} onChange={setBottom} step={5} />
         <Num label="Left" value={left} onChange={setLeft} step={5} />

@@ -36,7 +36,11 @@ export type DemoId =
   | 'tower'
   | 'ragdoll'
   | 'cloth'
-  | 'conveyor';
+  | 'conveyor'
+  | 'dominoes'
+  | 'seesaw'
+  | 'galton'
+  | 'pyramid';
 
 export const DEMOS: { id: DemoId; label: string; description: string }[] = [
   { id: 'empty', label: 'Empty + Ground', description: 'Empty world with floor and walls' },
@@ -46,6 +50,10 @@ export const DEMOS: { id: DemoId; label: string; description: string }[] = [
   { id: 'ragdoll', label: 'Ragdoll', description: '7-piece ragdoll with pin joints' },
   { id: 'cloth', label: 'Cloth', description: '8×8 grid of particles connected by springs' },
   { id: 'conveyor', label: 'Conveyor Belt', description: 'Static blocks with high friction' },
+  { id: 'dominoes', label: 'Dominoes', description: 'A toppling row — give the first a nudge' },
+  { id: 'seesaw', label: 'See-saw + Load', description: 'A plank on a pivot with a drop weight' },
+  { id: 'galton', label: 'Galton Board', description: 'Balls bouncing through a peg lattice' },
+  { id: 'pyramid', label: 'Block Pyramid', description: 'A stable stacked pyramid of boxes' },
 ];
 
 export function buildDemo(id: DemoId): World {
@@ -72,8 +80,134 @@ export function buildDemo(id: DemoId): World {
     case 'conveyor':
       buildConveyor(w);
       break;
+    case 'dominoes':
+      buildDominoes(w);
+      break;
+    case 'seesaw':
+      buildSeesaw(w);
+      break;
+    case 'galton':
+      buildGalton(w);
+      break;
+    case 'pyramid':
+      buildPyramid(w);
+      break;
   }
   return w;
+}
+
+function buildDominoes(w: World) {
+  addGround(w);
+  const ground = w.bodies[0];
+  const top = ground.pos.y - 0.5;
+  for (let i = 0; i < 12; i++) {
+    w.add(
+      makeBody(makeBox(0.06, 0.55), {
+        pos: { x: -6 + i * 1.0, y: top - 0.55 },
+        friction: 0.6,
+        restitution: 0.02,
+        color: i === 0 ? '#f59e0b' : '#38bdf8',
+      }),
+    );
+  }
+  // A ball poised to knock the first domino over
+  w.add(
+    makeBody(makeCircle(0.35), {
+      pos: { x: -8, y: top - 2.5 },
+      vel: { x: 4, y: 0 },
+      restitution: 0.1,
+      friction: 0.4,
+      color: '#fb7185',
+    }),
+  );
+}
+
+function buildSeesaw(w: World) {
+  addGround(w);
+  const ground = w.bodies[0];
+  const top = ground.pos.y - 0.5;
+  const fulcrum = makeBody(makeBox(0.3, 0.6), {
+    pos: { x: 0, y: top - 0.6 },
+    isStatic: true,
+    color: '#475569',
+  });
+  w.add(fulcrum);
+  const plank = makeBody(makeBox(3.2, 0.1), {
+    pos: { x: 0, y: top - 1.3 },
+    friction: 0.7,
+    color: '#a16207',
+  });
+  w.add(plank);
+  w.addConstraint(makePin(plank, fulcrum, { x: 0, y: 0 }, { x: 0, y: -0.6 }));
+  // light box resting on the left, heavy weight dropping on the right
+  w.add(
+    makeBody(makeBox(0.3, 0.3), {
+      pos: { x: -2.4, y: top - 1.7 },
+      density: 0.7,
+      color: '#34d399',
+    }),
+  );
+  w.add(
+    makeBody(makeBox(0.45, 0.45), {
+      pos: { x: 2.4, y: top - 6 },
+      density: 8,
+      color: '#94a3b8',
+    }),
+  );
+}
+
+function buildGalton(w: World) {
+  addGround(w, 20, 18);
+  const top = -8;
+  const rows = 7;
+  const dx = 1.0;
+  for (let r = 0; r < rows; r++) {
+    const count = r + 1;
+    for (let i = 0; i < count; i++) {
+      w.add(
+        makeBody(makeCircle(0.1), {
+          pos: { x: (i - r / 2) * dx, y: top + r * 0.9 },
+          isStatic: true,
+          color: '#64748b',
+        }),
+      );
+    }
+  }
+  for (let i = 0; i < 14; i++) {
+    w.add(
+      makeBody(makeCircle(0.16), {
+        pos: { x: (Math.random() - 0.5) * 0.4, y: top - 2 - i * 0.5 },
+        restitution: 0.25,
+        friction: 0.2,
+        color: '#f0abfc',
+      }),
+    );
+  }
+}
+
+function buildPyramid(w: World) {
+  addGround(w);
+  const ground = w.bodies[0];
+  const top = ground.pos.y - 0.5;
+  const hw = 0.45;
+  const hh = 0.4;
+  const rows = 6;
+  for (let r = 0; r < rows; r++) {
+    const n = rows - r;
+    for (let i = 0; i < n; i++) {
+      w.add(
+        makeBody(makeBox(hw, hh), {
+          pos: {
+            x: (i - (n - 1) / 2) * (hw * 2 + 0.01),
+            y: top - hh - r * (hh * 2 + 0.005),
+          },
+          friction: 0.7,
+          restitution: 0.02,
+          color: (r + i) % 2 === 0 ? '#34d399' : '#22d3ee',
+        }),
+      );
+    }
+  }
 }
 
 function buildCradle(w: World) {

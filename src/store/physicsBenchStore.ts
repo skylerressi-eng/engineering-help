@@ -21,6 +21,7 @@ export interface DebugFlags {
   aabb: boolean;
   contacts: boolean;
   sleep: boolean;
+  trails: boolean;
 }
 
 interface PhysicsBenchStore {
@@ -61,7 +62,7 @@ export const usePhysicsBenchStore = create<PhysicsBenchStore>((set, get) => ({
   timeScale: 1,
   tool: 'select',
   selectedId: null,
-  debug: { velocity: false, forces: false, aabb: false, contacts: false, sleep: true },
+  debug: { velocity: false, forces: false, aabb: false, contacts: false, sleep: true, trails: false },
   currentMaterial: 'plastic',
   rev: 0,
 
