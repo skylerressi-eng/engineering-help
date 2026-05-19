@@ -12,6 +12,7 @@ import pcbdesign from './pcbdesign';
 import dataviz from './dataviz';
 import feaforge from './feaforge';
 import mechsim from './mechsim';
+import robosim from './robosim';
 import partslib from './partslib';
 import settings from './settings';
 import conway from './conway';
@@ -23,6 +24,7 @@ export const APPS: Record<string, AppModule> = {
   [dataviz.manifest.id]: dataviz,
   [feaforge.manifest.id]: feaforge,
   [mechsim.manifest.id]: mechsim,
+  [robosim.manifest.id]: robosim,
   [physicsbench.manifest.id]: physicsbench,
   [aerosim.manifest.id]: aerosim,
   [modeler3d.manifest.id]: modeler3d,

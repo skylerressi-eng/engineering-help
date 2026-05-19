@@ -155,6 +155,19 @@ export const ConwayIcon: FC<IconProps> = (p) => (
   </Glyph>
 );
 
+/* RoboSim: a wheeled robot with an antenna */
+export const RoboIcon: FC<IconProps> = (p) => (
+  <Glyph {...p}>
+    <rect x="7" y="11" width="18" height="11" rx="2" />
+    <circle cx="11" cy="25" r="2.6" fill="currentColor" stroke="none" />
+    <circle cx="21" cy="25" r="2.6" fill="currentColor" stroke="none" />
+    <circle cx="13" cy="16" r="1.3" fill="currentColor" stroke="none" />
+    <circle cx="19" cy="16" r="1.3" fill="currentColor" stroke="none" />
+    <path d="M16 11V7" />
+    <circle cx="16" cy="5.5" r="1.4" fill="currentColor" stroke="none" />
+  </Glyph>
+);
+
 /* Settings: a gear */
 export const SettingsIcon: FC<IconProps> = (p) => (
   <Glyph {...p}>
