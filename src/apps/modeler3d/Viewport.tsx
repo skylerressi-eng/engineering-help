@@ -51,14 +51,28 @@ function SceneObjects() {
   const select = useModelerStore((s) => s.select);
   const setTransform = useModelerStore((s) => s.setTransform);
   const { camera, gl } = useThree();
-  const meshRefs = useRef<Map<string, THREE.Mesh>>(new Map());
-  // refTick bumps every time a child registers/deregisters a mesh ref so we
-  // can re-render and pick up the latest mesh in the TransformControls JSX.
-  const [refTick, setRefTick] = useState(0);
-  const bump = () => setRefTick((t) => t + 1);
-  void refTick;
 
-  const selectedMesh = selectedId ? meshRefs.current.get(selectedId) : null;
+  // The actual THREE.Mesh of the selected object, held in state. It is only
+  // updated when it genuinely changes, so this reaches a fixed point instead
+  // of the old ref-Map + counter "bump" that re-rendered forever.
+  const [selectedMesh, setSelectedMesh] = useState<THREE.Mesh | null>(null);
+
+  const reportMesh = useCallback(
+    (id: string, mesh: THREE.Mesh | null) => {
+      setSelectedMesh((prev) => {
+        // Only the currently-selected object owns the gizmo.
+        if (id !== useModelerStore.getState().selectedId) return prev;
+        return prev === mesh ? prev : mesh;
+      });
+    },
+    [],
+  );
+
+  // If the selection changed to something that didn't re-mount (or to nothing),
+  // clear a stale mesh so the gizmo detaches.
+  useEffect(() => {
+    if (!selectedId) setSelectedMesh(null);
+  }, [selectedId]);
 
   return (
     <>
@@ -66,9 +80,9 @@ function SceneObjects() {
         <Obj
           key={o.id}
           obj={o}
+          selected={o.id === selectedId}
           onClick={() => select(o.id)}
-          meshRefs={meshRefs}
-          onRefChange={bump}
+          reportMesh={reportMesh}
         />
       ))}
       {selectedId && selectedMesh && (
@@ -79,7 +93,7 @@ function SceneObjects() {
           camera={camera}
           domElement={gl.domElement}
           onObjectChange={() => {
-            const mesh = meshRefs.current.get(selectedId);
+            const mesh = selectedMesh;
             if (!mesh) return;
             setTransform(selectedId, {
               position: [mesh.position.x, mesh.position.y, mesh.position.z],
@@ -95,38 +109,24 @@ function SceneObjects() {
 
 function Obj({
   obj,
+  selected,
   onClick,
-  meshRefs,
-  onRefChange,
+  reportMesh,
 }: {
   obj: SceneObject;
+  selected: boolean;
   onClick: () => void;
-  meshRefs: React.MutableRefObject<Map<string, THREE.Mesh>>;
-  onRefChange: () => void;
+  reportMesh: (id: string, mesh: THREE.Mesh | null) => void;
 }) {
-  const selectedId = useModelerStore((s) => s.selectedId);
-  const isSelected = selectedId === obj.id;
+  const isSelected = selected;
+  const meshRef = useRef<THREE.Mesh>(null);
 
-  // Stable ref callback. An inline ref function gets a fresh identity every
-  // render, so React would detach+reattach the mesh on every commit and each
-  // call bumped parent state — an infinite render loop ("Maximum update depth
-  // exceeded"). Keying the callback to obj.id makes it run only on real
-  // mount/unmount, and we only bump when membership actually changes.
-  const setMeshRef = useCallback(
-    (m: THREE.Mesh | null) => {
-      if (m) {
-        if (meshRefs.current.get(obj.id) !== m) {
-          meshRefs.current.set(obj.id, m);
-          onRefChange();
-        }
-      } else if (meshRefs.current.has(obj.id)) {
-        meshRefs.current.delete(obj.id);
-        onRefChange();
-      }
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [obj.id],
-  );
+  // When this object is the selected one, hand its mesh up to the parent so
+  // the gizmo can attach. This runs on mount and whenever selection toggles —
+  // not on every render — so it converges instead of looping.
+  useEffect(() => {
+    if (selected) reportMesh(obj.id, meshRef.current);
+  }, [selected, obj.id, reportMesh]);
 
   // Apply modifier stack only when geometry or modifiers change
   const geom = useMemo(() => {
@@ -143,7 +143,7 @@ function Obj({
 
   return (
     <mesh
-      ref={setMeshRef}
+      ref={meshRef}
       geometry={geom}
       position={obj.position}
       rotation={obj.rotation}
