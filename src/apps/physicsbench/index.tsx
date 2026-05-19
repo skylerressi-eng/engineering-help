@@ -671,7 +671,11 @@ function LibraryDropButton() {
               <button
                 key={it.id}
                 onClick={() => {
-                  drop(it.name, it.build());
+                  try {
+                    drop(it.name, it.build());
+                  } catch {
+                    /* drop() already surfaces build/section errors */
+                  }
                   setOpen(false);
                 }}
                 className="w-full text-left px-2 py-1 text-xs hover:bg-white/10 flex items-center gap-2"

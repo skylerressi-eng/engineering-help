@@ -262,8 +262,10 @@ export const useFeaStore = create<FeaStore>((set, get) => ({
     const mat = getEngMaterial(get().materialId);
     const cx = pts.reduce((a, p) => a + p.x, 0) / pts.length;
     const cy = pts.reduce((a, p) => a + p.y, 0) / pts.length;
+    // Collision-safe prefixes: addNode/finishElement mint `n{seq}`/`e{seq}`
+    // starting at 1, so generated ids must not use that scheme.
     const nodes = pts.map((p, i) => ({
-      id: `n${i + 1}`,
+      id: `mn${i + 1}`,
       x: p.x,
       y: p.y,
       z: 0,
@@ -272,7 +274,7 @@ export const useFeaStore = create<FeaStore>((set, get) => ({
       fixZ: false,
     }));
     const center = {
-      id: `n${pts.length + 1}`,
+      id: `mn${pts.length + 1}`,
       x: cx,
       y: cy,
       z: 0,
@@ -291,10 +293,10 @@ export const useFeaStore = create<FeaStore>((set, get) => ({
     for (let i = 0; i < pts.length; i++) {
       const a = nodes[i].id;
       const b = nodes[(i + 1) % pts.length].id;
-      elements.push({ id: `e${ei++}`, a, b, E, A: area, alpha: mat.alpha });
+      elements.push({ id: `me${ei++}`, a, b, E, A: area, alpha: mat.alpha });
       // Spoke to centroid — triangulates the polygon so it isn't a mechanism.
       elements.push({
-        id: `e${ei++}`,
+        id: `me${ei++}`,
         a,
         b: center.id,
         E,

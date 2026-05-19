@@ -85,7 +85,7 @@ function SceneObjects() {
           reportMesh={reportMesh}
         />
       ))}
-      {selectedId && selectedMesh && (
+      {selectedId && selectedMesh && selectedMesh.parent && (
         <TransformControls
           // eslint-disable-next-line react/no-unknown-property
           object={selectedMesh}

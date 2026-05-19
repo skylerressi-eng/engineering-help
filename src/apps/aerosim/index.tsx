@@ -576,7 +576,11 @@ function LibraryImportMenu({
               <button
                 key={it.id}
                 onClick={() => {
-                  onPick(it.name, it.build());
+                  try {
+                    onPick(it.name, it.build());
+                  } catch (err) {
+                    toast.error('Build failed', (err as Error).message);
+                  }
                   setOpen(false);
                 }}
                 className="w-full text-left px-2 py-1 text-xs hover:bg-white/10 flex items-center gap-2"
