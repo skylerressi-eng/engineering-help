@@ -27,6 +27,13 @@ const VT = 0.02585; // thermal voltage @ ~300K
 const IS = 1e-12;
 const NR_TOL = 1e-7;
 const NR_MAX_ITER = 80;
+/**
+ * Tiny leakage conductance from every node to ground (SPICE "gmin"). Without
+ * it, any floating node or ungrounded subnetwork makes the MNA matrix singular
+ * and the solve throws "DC solve failed". 1e-9 S is negligible for real
+ * results but keeps the system well-posed.
+ */
+const GMIN = 1e-9;
 
 /** Collect non-ground nodes and assign them an index in the MNA matrix. */
 function buildNodeMap(circuit: AnalogCircuit): { idx: Map<string, number>; n: number } {
@@ -38,6 +45,22 @@ function buildNodeMap(circuit: AnalogCircuit): { idx: Map<string, number>; n: nu
       const pin = c.pins.p;
       if (pin) groundNodes.add(pin);
     }
+  }
+  // No explicit ground component: the system has no voltage reference and is
+  // singular. Pick a reference node so the solve still works — prefer the
+  // negative/return pin of the first source, else the first node.
+  if (groundNodes.size === 0) {
+    let ref: string | undefined;
+    const src = circuit.components.find(
+      (c) =>
+        c.type === 'vsource' ||
+        c.type === 'vsource_ac' ||
+        c.type === 'battery' ||
+        c.type === 'isource',
+    );
+    if (src) ref = src.pins.n;
+    if (!ref) ref = circuit.nodes[0];
+    if (ref) groundNodes.add(ref);
   }
   for (const n of circuit.nodes) {
     if (!groundNodes.has(n)) idx.set(n, idx.size);
@@ -103,6 +126,10 @@ function buildSystem(circuit: AnalogCircuit, opts: BuildOpts): MNASystem {
     if (i < 0 || j < 0) return;
     add(A, size, i, j, v);
   };
+
+  // Leak every node to ground so an isolated/floating node can't make the
+  // matrix singular (SPICE gmin). Branch-current rows are unaffected.
+  for (let i = 0; i < nNodes; i++) add(A, size, i, i, GMIN);
 
   for (const c of circuit.components) {
     if (c.type === 'wire' || c.type === 'ground') continue;
