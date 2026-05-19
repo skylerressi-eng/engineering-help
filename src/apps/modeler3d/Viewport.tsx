@@ -6,7 +6,7 @@ import {
   GizmoHelper,
   GizmoViewport,
 } from '@react-three/drei';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { useModelerStore, type SceneObject } from '@/store/modelerStore';
 import { applyStack } from '@/lib/modeler/modifiers';
@@ -47,39 +47,8 @@ export default function ModelerViewport() {
 function SceneObjects() {
   const objects = useModelerStore((s) => s.objects);
   const selectedId = useModelerStore((s) => s.selectedId);
-  const transformMode = useModelerStore((s) => s.transformMode);
   const select = useModelerStore((s) => s.select);
   const setTransform = useModelerStore((s) => s.setTransform);
-  const { camera, gl } = useThree();
-
-  // The actual THREE.Mesh of the selected object, held in state. It is only
-  // updated when it genuinely changes, so this reaches a fixed point instead
-  // of the old ref-Map + counter "bump" that re-rendered forever.
-  const [selectedMesh, setSelectedMesh] = useState<THREE.Mesh | null>(null);
-
-  const reportMesh = useCallback(
-    (id: string, mesh: THREE.Mesh | null) => {
-      setSelectedMesh((prev) => {
-        // Only the currently-selected object owns the gizmo.
-        if (id !== useModelerStore.getState().selectedId) return prev;
-        return prev === mesh ? prev : mesh;
-      });
-    },
-    [],
-  );
-
-  // If the selection changed to something that didn't re-mount (or to nothing),
-  // clear a stale mesh so the gizmo detaches.
-  useEffect(() => {
-    if (!selectedId) setSelectedMesh(null);
-  }, [selectedId]);
-
-  // Capture a ref to the latest selectedId/Mesh so the onObjectChange closure
-  // never goes stale, and to skip setTransform if values haven't moved.
-  const selectedIdRef = useRef(selectedId);
-  const selectedMeshRef = useRef(selectedMesh);
-  useEffect(() => { selectedIdRef.current = selectedId; }, [selectedId]);
-  useEffect(() => { selectedMeshRef.current = selectedMesh; }, [selectedMesh]);
 
   return (
     <>
@@ -89,60 +58,38 @@ function SceneObjects() {
           obj={o}
           selected={o.id === selectedId}
           onClick={() => select(o.id)}
-          reportMesh={reportMesh}
+          onTransform={(patch) => setTransform(o.id, patch)}
         />
       ))}
-      {selectedId && selectedMesh && selectedMesh.parent && (
-        <TransformControls
-          // eslint-disable-next-line react/no-unknown-property
-          object={selectedMesh}
-          mode={transformMode}
-          camera={camera}
-          domElement={gl.domElement}
-          onObjectChange={() => {
-            const mesh = selectedMeshRef.current;
-            const id = selectedIdRef.current;
-            if (!mesh || !id) return;
-            setTransform(id, {
-              position: [mesh.position.x, mesh.position.y, mesh.position.z],
-              rotation: [mesh.rotation.x, mesh.rotation.y, mesh.rotation.z],
-              scale: [mesh.scale.x, mesh.scale.y, mesh.scale.z],
-            });
-          }}
-        />
-      )}
     </>
   );
 }
 
+/**
+ * Renders one scene object as a mesh. When selected, also mounts a
+ * TransformControls gizmo co-located with the mesh ref — no cross-component
+ * ref or useState chain, so there is no path to an infinite render loop.
+ */
 function Obj({
   obj,
   selected,
   onClick,
-  reportMesh,
+  onTransform,
 }: {
   obj: SceneObject;
   selected: boolean;
   onClick: () => void;
-  reportMesh: (id: string, mesh: THREE.Mesh | null) => void;
+  onTransform: (patch: Partial<Pick<SceneObject, 'position' | 'rotation' | 'scale'>>) => void;
 }) {
-  const isSelected = selected;
+  const transformMode = useModelerStore((s) => s.transformMode);
+  const { camera, gl } = useThree();
   const meshRef = useRef<THREE.Mesh>(null);
 
-  // When this object is the selected one, hand its mesh up to the parent so
-  // the gizmo can attach. This runs on mount and whenever selection toggles —
-  // not on every render — so it converges instead of looping.
-  useEffect(() => {
-    if (selected) reportMesh(obj.id, meshRef.current);
-  }, [selected, obj.id, reportMesh]);
-
-  // Apply modifier stack only when geometry or modifiers change
   const geom = useMemo(() => {
     if (!obj.modifiers.length) return obj.geometry;
     return applyStack(obj.geometry, obj.modifiers);
   }, [obj.geometry, obj.modifiers]);
 
-  // Dispose previously generated geometries when this one changes
   useEffect(() => {
     return () => {
       if (geom !== obj.geometry) geom.dispose();
@@ -150,27 +97,47 @@ function Obj({
   }, [geom, obj.geometry]);
 
   return (
-    <mesh
-      ref={meshRef}
-      geometry={geom}
-      position={obj.position}
-      rotation={obj.rotation}
-      scale={obj.scale}
-      castShadow
-      receiveShadow
-      onClick={(e) => {
-        e.stopPropagation();
-        onClick();
-      }}
-    >
-      <meshStandardMaterial
-        color={obj.color}
-        metalness={obj.metalness}
-        roughness={obj.roughness}
-        emissive={isSelected ? '#0A84FF' : obj.emissive}
-        emissiveIntensity={isSelected ? 0.15 : (obj.emissive === '#000000' ? 0 : 0.5)}
-        wireframe={obj.wireframe}
-      />
-    </mesh>
+    <>
+      <mesh
+        ref={meshRef}
+        geometry={geom}
+        position={obj.position}
+        rotation={obj.rotation}
+        scale={obj.scale}
+        castShadow
+        receiveShadow
+        onClick={(e) => {
+          e.stopPropagation();
+          onClick();
+        }}
+      >
+        <meshStandardMaterial
+          color={obj.color}
+          metalness={obj.metalness}
+          roughness={obj.roughness}
+          emissive={selected ? '#0A84FF' : obj.emissive}
+          emissiveIntensity={selected ? 0.15 : (obj.emissive === '#000000' ? 0 : 0.5)}
+          wireframe={obj.wireframe}
+        />
+      </mesh>
+      {selected && (
+        <TransformControls
+          // eslint-disable-next-line react/no-unknown-property
+          object={meshRef as React.MutableRefObject<THREE.Object3D>}
+          mode={transformMode}
+          camera={camera}
+          domElement={gl.domElement}
+          onObjectChange={() => {
+            const m = meshRef.current;
+            if (!m) return;
+            onTransform({
+              position: [m.position.x, m.position.y, m.position.z],
+              rotation: [m.rotation.x, m.rotation.y, m.rotation.z],
+              scale: [m.scale.x, m.scale.y, m.scale.z],
+            });
+          }}
+        />
+      )}
+    </>
   );
 }
