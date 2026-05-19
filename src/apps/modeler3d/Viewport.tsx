@@ -74,6 +74,13 @@ function SceneObjects() {
     if (!selectedId) setSelectedMesh(null);
   }, [selectedId]);
 
+  // Capture a ref to the latest selectedId/Mesh so the onObjectChange closure
+  // never goes stale, and to skip setTransform if values haven't moved.
+  const selectedIdRef = useRef(selectedId);
+  const selectedMeshRef = useRef(selectedMesh);
+  useEffect(() => { selectedIdRef.current = selectedId; }, [selectedId]);
+  useEffect(() => { selectedMeshRef.current = selectedMesh; }, [selectedMesh]);
+
   return (
     <>
       {objects.map((o) => (
@@ -93,9 +100,10 @@ function SceneObjects() {
           camera={camera}
           domElement={gl.domElement}
           onObjectChange={() => {
-            const mesh = selectedMesh;
-            if (!mesh) return;
-            setTransform(selectedId, {
+            const mesh = selectedMeshRef.current;
+            const id = selectedIdRef.current;
+            if (!mesh || !id) return;
+            setTransform(id, {
               position: [mesh.position.x, mesh.position.y, mesh.position.z],
               rotation: [mesh.rotation.x, mesh.rotation.y, mesh.rotation.z],
               scale: [mesh.scale.x, mesh.scale.y, mesh.scale.z],
@@ -159,14 +167,10 @@ function Obj({
         color={obj.color}
         metalness={obj.metalness}
         roughness={obj.roughness}
-        emissive={obj.emissive}
-        emissiveIntensity={obj.emissive === '#000000' ? 0 : 0.5}
+        emissive={isSelected ? '#0A84FF' : obj.emissive}
+        emissiveIntensity={isSelected ? 0.15 : (obj.emissive === '#000000' ? 0 : 0.5)}
         wireframe={obj.wireframe}
       />
-      {isSelected && (
-        // eslint-disable-next-line react/no-unknown-property
-        <meshBasicMaterial attach="material" wireframe color="#0A84FF" transparent opacity={0.0} />
-      )}
     </mesh>
   );
 }
