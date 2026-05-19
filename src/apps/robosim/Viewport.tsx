@@ -3,13 +3,15 @@ import { OrbitControls, Grid } from '@react-three/drei';
 import { useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { useRoboStore } from '@/store/robosimStore';
-import { stepRobot, constrainToField } from './physics';
+import { stepRobot, constrainToField, constrainToObstacles } from './physics';
 import {
   robot,
   rawInput,
   pieces,
   loadPieces,
   FIELD_BOUNDS as FIELD,
+  OBSTACLE_BOXES,
+  DEPOSIT_ZONES,
 } from './shared';
 
 const ROBOT_RADIUS = 0.42;
@@ -73,7 +75,12 @@ function RobotModel() {
   useFrame((_, dt) => {
     const st = useRoboStore.getState();
     if (st.enabled && st.running) {
-      const boost = rawInput.boost ? 1 : rawInput.precision ? 0.35 : 1;
+      // Shift = full throttle override, Ctrl = 30% precision, else slider value
+      const effectiveThrottle = rawInput.precision
+        ? 0.3
+        : rawInput.boost
+          ? 1.0
+          : st.throttle;
       stepRobot(
         robot,
         st.config,
@@ -82,12 +89,15 @@ function RobotModel() {
           strafe: rawInput.strafe,
           turn: rawInput.turn,
           fieldOriented: st.fieldOriented,
-          throttle: st.throttle * boost,
+          throttle: effectiveThrottle,
         },
         dt,
       );
       const f = FIELD[st.field];
       constrainToField(robot, f.halfX, f.halfZ, ROBOT_RADIUS);
+      if (st.field === 'obstacle') {
+        constrainToObstacles(robot, OBSTACLE_BOXES, ROBOT_RADIUS);
+      }
     }
     const g = group.current;
     if (g) {
@@ -230,6 +240,7 @@ function FieldGeometry({ field }: { field: 'frc' | 'open' | 'obstacle' }) {
       <Walls halfX={f.halfX} halfZ={f.halfZ} />
       {field === 'frc' && <FrcField halfX={f.halfX} halfZ={f.halfZ} />}
       {field === 'obstacle' && <Obstacles />}
+      {field !== 'frc' && <DepositZone field={field} />}
     </>
   );
 }
@@ -321,32 +332,55 @@ function ScoringGrid({ x, color }: { x: number; color: string }) {
   );
 }
 
+// Full obstacle block specs: [x, halfHeight, z, fullWidth, fullDepth]
+// halfWidth = fullWidth/2 = ObstacleBox.halfW; halfDepth = fullDepth/2 = ObstacleBox.halfD
+const OBSTACLE_BLOCKS: [number, number, number, number, number][] = [
+  [-3, 0.4, -2, 1.2, 0.8],
+  [3, 0.3, 2, 0.6, 1.4],
+  [3.5, 0.5, -3, 1.6, 0.4],
+  [-3.5, 0.35, 3, 0.7, 1.2],
+  [0, 0.25, 0, 1.0, 1.0],
+];
+
 function Obstacles() {
-  const blocks: [number, number, number, number, number][] = [
-    [-3, 0.4, -2, 1.2, 0.8],
-    [3, 0.3, 2, 0.6, 1.4],
-    [3.5, 0.5, -3, 1.6, 0.4],
-    [-3.5, 0.35, 3, 0.7, 1.2],
-    [0, 0.25, 0, 1.0, 1.0],
-  ];
   return (
     <>
-      {blocks.map(([bx, by, bz, bw, bd], i) => (
-        <mesh
-          key={i}
-          position={[bx, by, bz]}
-          castShadow
-          receiveShadow
-        >
+      {OBSTACLE_BLOCKS.map(([bx, by, bz, bw, bd], i) => (
+        <mesh key={i} position={[bx, by, bz]} castShadow receiveShadow>
           <boxGeometry args={[bw, by * 2, bd]} />
-          <meshStandardMaterial
-            color="#4a5a7a"
-            metalness={0.3}
-            roughness={0.7}
-          />
+          <meshStandardMaterial color="#4a5a7a" metalness={0.3} roughness={0.7} />
         </mesh>
       ))}
     </>
+  );
+}
+
+function DepositZone({ field }: { field: string }) {
+  const zone = DEPOSIT_ZONES[field];
+  if (!zone) return null;
+  const { x, z, halfW, halfD } = zone;
+  // Border: four thin strips around the perimeter
+  const t = 0.06;
+  return (
+    <group position={[x, 0.004, z]}>
+      {/* Fill */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]}>
+        <planeGeometry args={[halfW * 2, halfD * 2]} />
+        <meshStandardMaterial color="#22c55e" transparent opacity={0.18} roughness={1} />
+      </mesh>
+      {/* Border strips */}
+      {[
+        [0, 0, -(halfD - t / 2), halfW * 2, t],
+        [0, 0, halfD - t / 2, halfW * 2, t],
+        [-(halfW - t / 2), 0, 0, t, halfD * 2],
+        [halfW - t / 2, 0, 0, t, halfD * 2],
+      ].map(([bx, , bz, bw, bd], i) => (
+        <mesh key={i} rotation={[-Math.PI / 2, 0, 0]} position={[bx, 0.001, bz]}>
+          <planeGeometry args={[bw, bd]} />
+          <meshStandardMaterial color="#22c55e" transparent opacity={0.7} roughness={1} />
+        </mesh>
+      ))}
+    </group>
   );
 }
 

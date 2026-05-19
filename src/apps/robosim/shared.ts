@@ -1,4 +1,5 @@
-import { makeRobotState, type RobotState } from './physics';
+import { makeRobotState, type RobotState, type ObstacleBox } from './physics';
+export type { ObstacleBox };
 
 /**
  * Per-instance simulation singletons. The Viewport's render loop owns the
@@ -78,6 +79,25 @@ export function resetRobot(x = 0, z = -3, heading = 0) {
   robot.motorCurrent = 0;
 }
 
+/**
+ * Obstacle AABB data for the "obstacle" field. Coordinates match the meshes
+ * rendered in Viewport → Obstacles. halfW/halfD are half-extents in X/Z.
+ * format: blocks[i] = [bx, by, bz, fullWidth, fullDepth] → halfW=w/2, halfD=d/2
+ */
+export const OBSTACLE_BOXES: ObstacleBox[] = [
+  { x: -3, z: -2, halfW: 0.6, halfD: 0.4 },
+  { x: 3, z: 2, halfW: 0.3, halfD: 0.7 },
+  { x: 3.5, z: -3, halfW: 0.8, halfD: 0.2 },
+  { x: -3.5, z: 3, halfW: 0.35, halfD: 0.6 },
+  { x: 0, z: 0, halfW: 0.5, halfD: 0.5 },
+];
+
+/** Deposit zone for non-FRC fields: drive here with held pieces to score. */
+export const DEPOSIT_ZONES: Record<string, { x: number; z: number; halfW: number; halfD: number }> = {
+  open: { x: 0, z: 5.5, halfW: 2.5, halfD: 1.5 },
+  obstacle: { x: -4.5, z: -4.5, halfW: 1.5, halfD: 1.5 },
+};
+
 export const keyHandlers = (() => {
   const keys = new Set<string>();
   const recompute = () => {
@@ -105,6 +125,9 @@ export const keyHandlers = (() => {
     clear() {
       keys.clear();
       recompute();
+    },
+    isActive() {
+      return keys.size > 0;
     },
   };
 })();

@@ -351,6 +351,44 @@ function substep(
   if (s.heading < -Math.PI) s.heading += 2 * Math.PI;
 }
 
+/** Axis-aligned bounding box for obstacle collision. */
+export interface ObstacleBox {
+  x: number;
+  z: number;
+  halfW: number;
+  halfD: number;
+}
+
+/**
+ * Push the robot out of any obstacle boxes using a closest-point AABB test.
+ * Inelastically cancels velocity into the wall face.
+ */
+export function constrainToObstacles(
+  s: RobotState,
+  boxes: ObstacleBox[],
+  robotRadius: number,
+): void {
+  for (const box of boxes) {
+    const nearX = Math.max(box.x - box.halfW, Math.min(box.x + box.halfW, s.x));
+    const nearZ = Math.max(box.z - box.halfD, Math.min(box.z + box.halfD, s.z));
+    const dx = s.x - nearX;
+    const dz = s.z - nearZ;
+    const dist2 = dx * dx + dz * dz;
+    if (dist2 < robotRadius * robotRadius && dist2 > 1e-10) {
+      const dist = Math.sqrt(dist2);
+      const nx = dx / dist;
+      const nz = dz / dist;
+      s.x = nearX + nx * robotRadius;
+      s.z = nearZ + nz * robotRadius;
+      const vDotN = s.vx * nx + s.vz * nz;
+      if (vDotN < 0) {
+        s.vx -= vDotN * nx * 1.2;
+        s.vz -= vDotN * nz * 1.2;
+      }
+    }
+  }
+}
+
 /** Clamp the robot inside the field walls with an inelastic bounce. */
 export function constrainToField(
   s: RobotState,

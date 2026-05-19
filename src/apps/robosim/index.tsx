@@ -18,6 +18,7 @@ import {
   loadPieces,
   keyHandlers,
   FIELD_BOUNDS,
+  DEPOSIT_ZONES,
 } from './shared';
 import { useAppTools } from '@/hooks/useToolRegistry';
 import { publishAppState } from '@/ai/screenScanner';
@@ -57,6 +58,7 @@ interface Telemetry {
 function RoboSim({ appId }: { appId: string }) {
   const st = useRoboStore();
   const rootRef = useRef<HTMLDivElement>(null);
+  const [gamepadActive, setGamepadActive] = useState(false);
   const [tel, setTel] = useState<Telemetry>({
     speed: 0,
     heading: 0,
@@ -101,10 +103,34 @@ function RoboSim({ appId }: { appId: string }) {
     let raf = 0;
     let last = performance.now();
     let acc = 0;
+    let gpWasActive = false;
     const loop = (now: number) => {
       raf = requestAnimationFrame(loop);
       const dt = Math.min(0.1, (now - last) / 1000);
       last = now;
+
+      // Gamepad: only write to rawInput when no keyboard key is held
+      const gp = navigator.getGamepads?.()[0] ?? null;
+      const gpNowActive = !!gp;
+      if (gpNowActive !== gpWasActive) {
+        gpWasActive = gpNowActive;
+        setGamepadActive(gpNowActive);
+      }
+      if (gp && !keyHandlers.isActive()) {
+        const dead = (v: number) => (Math.abs(v) > 0.12 ? v : 0);
+        rawInput.drive = -dead(gp.axes[1] ?? 0);
+        rawInput.strafe = dead(gp.axes[0] ?? 0);
+        rawInput.turn = dead(gp.axes[2] ?? 0);
+        rawInput.boost = gp.buttons[5]?.pressed ?? false;
+        rawInput.precision = gp.buttons[4]?.pressed ?? false;
+        rawInput.intake = gp.buttons[0]?.pressed ?? false;
+      } else if (!gp && !keyHandlers.isActive()) {
+        // No gamepad and no keys — ensure inputs are zeroed
+        rawInput.drive = 0;
+        rawInput.strafe = 0;
+        rawInput.turn = 0;
+      }
+
       const s = useRoboStore.getState();
 
       if (s.running) {
@@ -137,6 +163,20 @@ function RoboSim({ appId }: { appId: string }) {
             const pts = s.heldPieces * 2;
             s.addScore(s.alliance, pts, `${s.heldPieces} piece(s)`);
             s.setHeld(0);
+          }
+        }
+        // Scoring: deposit zone for open/obstacle fields.
+        if (s.field !== 'frc' && s.heldPieces > 0) {
+          const zone = DEPOSIT_ZONES[s.field];
+          if (zone) {
+            const inZone =
+              Math.abs(robot.x - zone.x) < zone.halfW &&
+              Math.abs(robot.z - zone.z) < zone.halfD;
+            if (inZone) {
+              const pts = s.heldPieces * 3;
+              s.addScore(s.alliance, pts, `${s.heldPieces}× deposit`);
+              s.setHeld(0);
+            }
           }
         }
       }
@@ -343,6 +383,9 @@ function RoboSim({ appId }: { appId: string }) {
             v={`${tel.voltage.toFixed(1)} V`}
             warn={tel.voltage < 9}
           />
+          {gamepadActive && (
+            <div className="text-emerald-400">GAMEPAD</div>
+          )}
           {tel.slip && (
             <div className="text-amber-400 font-bold">⚠ WHEEL SLIP</div>
           )}
