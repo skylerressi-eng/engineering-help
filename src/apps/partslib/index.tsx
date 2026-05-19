@@ -299,9 +299,13 @@ function LibraryPanel() {
   const [material, setMaterial] = useState('plastic');
 
   const sel = models.find((m) => m.id === selId) ?? null;
+  // Rebuild only when the selected model or its geometry actually changes —
+  // NOT on rename. `rename` returns a new model object (and a new `models`
+  // array / new `sel`) but keeps the same `geom` payload, so keying the memo
+  // on `sel.geom` avoids rebuilding + remounting the 3D preview per keystroke.
   const geom = useMemo(
     () => (sel ? geometryFromJSON(sel.geom) : null),
-    [sel],
+    [sel?.geom],
   );
   // Free the previous preview geometry when the selection changes / unmounts
   useEffect(() => {
