@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RoboDrive Simulator — Ultimate Robotics Simulation</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════════ LOADING SCREEN -->
+<div id="loading-screen">
+    <div id="loading-content">
+        <div class="ld-logo">ROBODRIVE<span class="ld-logo-accent">SIM</span></div>
+        <div class="ld-subtitle">ULTIMATE ROBOTICS SIMULATOR</div>
+        <div class="ld-bar-wrap"><div class="ld-bar" id="ld-bar"></div></div>
+        <div class="ld-status" id="ld-status">Initializing...</div>
+        <div class="ld-badges">
+            <span class="ld-badge">⚙ GAZEBO PHYSICS</span>
+            <span class="ld-badge">🏆 FRC INSPIRED</span>
+            <span class="ld-badge">🤖 FTC MECHANICS</span>
+            <span class="ld-badge">🔬 VEX COMPATIBLE</span>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════ LAYOUT -->
+<div id="app-root">
+
+<!-- ═══════════════════════════════════════════ LEFT: DRIVER STATION PANEL -->
+<div id="driver-station">
+
+    <!-- Header -->
+    <div id="ds-header">
+        <div class="ds-logo">
+            <span class="logo-main">ROBODRIVE</span>
+            <span class="logo-sub">DRIVER STATION v2.0</span>
+        </div>
+        <div class="ds-status-row">
+            <div class="ds-indicator" id="ind-comms" title="Communications">
+                <div class="ind-dot"></div><span>COMMS</span>
+            </div>
+            <div class="ds-indicator" id="ind-code" title="Robot Code">
+                <div class="ind-dot"></div><span>CODE</span>
+            </div>
+            <div class="ds-indicator enabled" id="ind-ds" title="Driver Station">
+                <div class="ind-dot"></div><span>DS</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Alliance Selector -->
+    <div class="ds-section" id="alliance-section">
+        <div class="ds-section-title">ALLIANCE</div>
+        <div class="alliance-buttons">
+            <button class="alliance-btn red active" data-alliance="red">◀ RED</button>
+            <button class="alliance-btn blue" data-alliance="blue">BLUE ▶</button>
+        </div>
+        <div class="team-input-row">
+            <label>Team #</label>
+            <input type="number" id="team-number" value="1234" min="1" max="99999">
+        </div>
+    </div>
+
+    <!-- Match Control -->
+    <div class="ds-section" id="match-section">
+        <div class="ds-section-title">MATCH CONTROL</div>
+        <div id="match-timer-display">2:15</div>
+        <div id="match-phase-label">TELEOP</div>
+        <div class="match-phase-row">
+            <button class="phase-btn active" data-phase="auto">AUTO</button>
+            <button class="phase-btn" data-phase="teleop">TELEOP</button>
+            <button class="phase-btn" data-phase="endgame">ENDGAME</button>
+        </div>
+        <div class="enable-row">
+            <button id="btn-enable" class="btn-enable">ENABLE</button>
+            <button id="btn-disable" class="btn-disable active-state">DISABLE</button>
+        </div>
+        <button id="btn-start-match" class="btn-secondary">▶ START MATCH</button>
+        <button id="btn-reset-match" class="btn-secondary">↺ RESET MATCH</button>
+    </div>
+
+    <!-- Score -->
+    <div class="ds-section" id="score-section">
+        <div class="ds-section-title">SCOREBOARD</div>
+        <div class="scoreboard">
+            <div class="sb-team red-team">
+                <span class="sb-label">RED</span>
+                <span class="sb-score" id="red-score">0</span>
+            </div>
+            <div class="sb-divider">—</div>
+            <div class="sb-team blue-team">
+                <span class="sb-score" id="blue-score">0</span>
+                <span class="sb-label">BLUE</span>
+            </div>
+        </div>
+        <div class="piece-hold-row">
+            <span class="hold-label">HELD:</span>
+            <div id="piece-slots">
+                <div class="piece-slot" id="slot-0"></div>
+                <div class="piece-slot" id="slot-1"></div>
+                <div class="piece-slot" id="slot-2"></div>
+            </div>
+        </div>
+        <div class="action-log" id="action-log">
+            <div class="log-entry">Match ready. Press ENABLE.</div>
+        </div>
+    </div>
+
+    <!-- Telemetry -->
+    <div class="ds-section" id="telemetry-section">
+        <div class="ds-section-title">TELEMETRY</div>
+        <div class="telem-grid">
+            <span class="tl">X</span><span class="tv" id="tel-x">0.00</span><span class="tu">m</span>
+            <span class="tl">Y</span><span class="tv" id="tel-y">0.00</span><span class="tu">m</span>
+            <span class="tl">HDG</span><span class="tv" id="tel-hdg">0</span><span class="tu">°</span>
+            <span class="tl">SPD</span><span class="tv" id="tel-spd">0.00</span><span class="tu">m/s</span>
+            <span class="tl">ARM</span><span class="tv" id="tel-arm">0</span><span class="tu">°</span>
+            <span class="tl">CLAW</span><span class="tv" id="tel-claw">CLOSED</span><span class="tu"></span>
+            <span class="tl">BAT</span><span class="tv" id="tel-bat">12.5</span><span class="tu">V</span>
+            <span class="tl">CPU</span><span class="tv" id="tel-cpu">0</span><span class="tu">%</span>
+        </div>
+        <!-- Battery bar -->
+        <div class="bat-row">
+            <span class="bat-label">BATTERY</span>
+            <div class="bat-bar-bg"><div class="bat-bar-fill" id="bat-fill"></div></div>
+        </div>
+    </div>
+
+    <!-- Drive Configuration -->
+    <div class="ds-section" id="drive-section">
+        <div class="ds-section-title">DRIVE CONFIG</div>
+        <div class="drive-mode-btns">
+            <button class="drive-btn active" data-mode="mecanum">MECANUM</button>
+            <button class="drive-btn" data-mode="tank">TANK</button>
+            <button class="drive-btn" data-mode="arcade">ARCADE</button>
+        </div>
+        <div class="config-row">
+            <label class="config-label">Field-Centric</label>
+            <label class="toggle-switch">
+                <input type="checkbox" id="toggle-field-centric" checked>
+                <span class="toggle-track"><span class="toggle-thumb"></span></span>
+            </label>
+        </div>
+        <div class="config-row">
+            <label class="config-label">Speed <span id="speed-display">75%</span></label>
+            <input type="range" class="ds-slider" id="speed-slider" min="10" max="100" value="75">
+        </div>
+        <div class="config-row">
+            <label class="config-label">Turn Sens <span id="turn-display">80%</span></label>
+            <input type="range" class="ds-slider" id="turn-slider" min="10" max="100" value="80">
+        </div>
+    </div>
+
+    <!-- Sensors / Robot Camera -->
+    <div class="ds-section" id="sensor-section">
+        <div class="ds-section-title">SENSORS & ROBOT CAM</div>
+        <div class="robot-cam-wrap">
+            <canvas id="robot-camera" width="272" height="153"></canvas>
+            <div class="cam-overlay">ROBOT POV</div>
+        </div>
+        <div class="sensor-rows">
+            <div class="sen-row">
+                <span class="sen-lbl">FRONT</span>
+                <div class="sen-bar" data-dir="front"><div class="sen-fill"></div></div>
+                <span class="sen-val" data-dir="front">--</span>
+            </div>
+            <div class="sen-row">
+                <span class="sen-lbl">LEFT</span>
+                <div class="sen-bar" data-dir="left"><div class="sen-fill"></div></div>
+                <span class="sen-val" data-dir="left">--</span>
+            </div>
+            <div class="sen-row">
+                <span class="sen-lbl">RIGHT</span>
+                <div class="sen-bar" data-dir="right"><div class="sen-fill"></div></div>
+                <span class="sen-val" data-dir="right">--</span>
+            </div>
+            <div class="sen-row">
+                <span class="sen-lbl">BACK</span>
+                <div class="sen-bar" data-dir="back"><div class="sen-fill"></div></div>
+                <span class="sen-val" data-dir="back">--</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Field Selector -->
+    <div class="ds-section" id="field-section">
+        <div class="ds-section-title">FIELD</div>
+        <div class="field-btns">
+            <button class="field-btn active" data-field="frc">FRC 2024</button>
+            <button class="field-btn" data-field="ftc">FTC</button>
+            <button class="field-btn" data-field="ftc">VEX</button>
+            <button class="field-btn" data-field="gazebo">OPEN</button>
+        </div>
+    </div>
+
+    <!-- Controls Reference -->
+    <div class="ds-section" id="controls-ref-section">
+        <div class="ds-section-title">CONTROLS</div>
+        <div class="ctrl-grid">
+            <kbd>W A S D</kbd><span>Drive</span>
+            <kbd>Q / E</kbd><span>Rotate</span>
+            <kbd>↑ ↓</kbd><span>Arm angle</span>
+            <kbd>← →</kbd><span>Arm extend</span>
+            <kbd>SPACE</kbd><span>Claw toggle</span>
+            <kbd>X</kbd><span>Intake / shoot</span>
+            <kbd>SHIFT</kbd><span>Speed boost</span>
+            <kbd>F</kbd><span>Field-centric</span>
+            <kbd>R</kbd><span>Reset robot</span>
+            <kbd>1 2 3 4</kbd><span>Camera views</span>
+            <kbd>TAB</kbd><span>Toggle panel</span>
+            <kbd>ESC</kbd><span>Field select</span>
+        </div>
+    </div>
+
+</div><!-- end #driver-station -->
+
+<!-- ══════════════════════════════════════════════════════ RIGHT: VIEWPORT -->
+<div id="viewport">
+    <canvas id="main-canvas"></canvas>
+
+    <!-- HUD -->
+    <div id="hud">
+        <!-- Top bar -->
+        <div id="hud-top">
+            <div class="hud-pill" id="hud-mode-pill">DISABLED</div>
+            <div class="hud-center">
+                <div class="hud-score-block red-block">
+                    RED <span id="hud-red">0</span>
+                </div>
+                <div id="hud-timer">2:15</div>
+                <div class="hud-score-block blue-block">
+                    BLUE <span id="hud-blue">0</span>
+                </div>
+            </div>
+            <div class="hud-pill" id="hud-phase-pill">TELEOP</div>
+        </div>
+
+        <!-- Minimap -->
+        <div id="minimap-wrap">
+            <canvas id="minimap" width="220" height="110"></canvas>
+            <div class="minimap-lbl">FIELD MAP</div>
+        </div>
+
+        <!-- Camera label -->
+        <div id="cam-label">DRIVER CAM — PRESS 1/2/3/4 TO SWITCH</div>
+
+        <!-- Crosshair -->
+        <div id="crosshair">⊕</div>
+
+        <!-- Notification toast -->
+        <div id="toast" class="toast hidden"></div>
+    </div>
+
+</div><!-- end #viewport -->
+
+</div><!-- end #app-root -->
+
+<!-- Import map -->
+<script type="importmap">
+{
+    "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/",
+        "cannon-es": "https://cdn.jsdelivr.net/npm/cannon-es@0.20.0/dist/cannon-es.js"
+    }
+}
+</script>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
