@@ -35,6 +35,17 @@ import { useSubStore, isPro } from '@/store/subscriptionStore';
 import DemoGate from './DemoGate';
 import Viewport from './Viewport';
 
+const DRIVETRAIN_LABELS: Record<string, string> = {
+  competition: 'FRC Mecanum (120 lb)',
+  sprint: 'FRC Sprint (light)',
+  tank: 'FRC Push Bot (heavy)',
+  swerve: 'FRC Swerve (nimble)',
+  ftc: 'FTC 18" (REV)',
+  vex: 'VEX V5',
+  sumo: 'Mini Sumo (1.5 kg)',
+  rc: 'Hobby RC truck',
+};
+
 const GAME_KEYS = new Set([
   'KeyW',
   'KeyA',
@@ -369,7 +380,10 @@ function RoboSim({ appId }: { appId: string }) {
       input_schema: {
         type: 'object',
         properties: {
-          id: { type: 'string', enum: ['competition', 'sprint', 'tank'] },
+          id: {
+            type: 'string',
+            enum: ['competition', 'sprint', 'tank', 'swerve', 'ftc', 'vex', 'sumo', 'rc'],
+          },
         },
         required: ['id'],
       },
@@ -590,7 +604,7 @@ function RoboSim({ appId }: { appId: string }) {
                       : 'bg-white/5 hover:bg-white/10 text-white/70'
                   }`}
                 >
-                  {v === 'robot' ? 'FRC Robot' : 'FPV Drone'}
+                  {v === 'robot' ? 'Ground Robot' : 'FPV Drone'}
                 </button>
               ))}
             </div>
@@ -692,7 +706,7 @@ function RoboSim({ appId }: { appId: string }) {
             >
               {Object.keys(DRIVE_PRESETS).map((k) => (
                 <option key={k} value={k} className="bg-zinc-800">
-                  {k}
+                  {DRIVETRAIN_LABELS[k] ?? k}
                 </option>
               ))}
             </select>
