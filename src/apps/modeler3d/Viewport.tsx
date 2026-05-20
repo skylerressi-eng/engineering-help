@@ -1,4 +1,4 @@
-import { Canvas, useThree } from '@react-three/fiber';
+import { Canvas } from '@react-three/fiber';
 import {
   OrbitControls,
   TransformControls,
@@ -6,7 +6,7 @@ import {
   GizmoHelper,
   GizmoViewport,
 } from '@react-three/drei';
-import React, { useEffect, useMemo, useRef } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { useModelerStore, type SceneObject } from '@/store/modelerStore';
 import { applyStack } from '@/lib/modeler/modifiers';
@@ -46,43 +46,26 @@ export default function ModelerViewport() {
 
 function SceneObjects() {
   const objects = useModelerStore((s) => s.objects);
-  const selectedId = useModelerStore((s) => s.selectedId);
-  const select = useModelerStore((s) => s.select);
-  const setTransform = useModelerStore((s) => s.setTransform);
 
   return (
     <>
       {objects.map((o) => (
-        <Obj
-          key={o.id}
-          obj={o}
-          selected={o.id === selectedId}
-          onClick={() => select(o.id)}
-          onTransform={(patch) => setTransform(o.id, patch)}
-        />
+        <Obj key={o.id} obj={o} />
       ))}
     </>
   );
 }
 
 /**
- * Renders one scene object as a mesh. When selected, also mounts a
- * TransformControls gizmo co-located with the mesh ref — no cross-component
- * ref or useState chain, so there is no path to an infinite render loop.
+ * Renders one scene object as a mesh. Subscribes directly to the store for
+ * `selected` and `transformMode` so that only the affected Obj re-renders on
+ * selection change. Does NOT use useThree — instead lets drei's TransformControls
+ * manage its own camera/domElement subscriptions internally, which avoids
+ * subscribing this component to the full R3F state.
  */
-function Obj({
-  obj,
-  selected,
-  onClick,
-  onTransform,
-}: {
-  obj: SceneObject;
-  selected: boolean;
-  onClick: () => void;
-  onTransform: (patch: Partial<Pick<SceneObject, 'position' | 'rotation' | 'scale'>>) => void;
-}) {
+const Obj = React.memo(function Obj({ obj }: { obj: SceneObject }) {
+  const selected = useModelerStore((s) => s.selectedId === obj.id);
   const transformMode = useModelerStore((s) => s.transformMode);
-  const { camera, gl } = useThree();
   const meshRef = useRef<THREE.Mesh>(null);
 
   const geom = useMemo(() => {
@@ -96,6 +79,16 @@ function Obj({
     };
   }, [geom, obj.geometry]);
 
+  const handleTransform = useCallback(() => {
+    const m = meshRef.current;
+    if (!m) return;
+    useModelerStore.getState().setTransform(obj.id, {
+      position: [m.position.x, m.position.y, m.position.z],
+      rotation: [m.rotation.x, m.rotation.y, m.rotation.z],
+      scale: [m.scale.x, m.scale.y, m.scale.z],
+    });
+  }, [obj.id]);
+
   return (
     <>
       <mesh
@@ -108,7 +101,7 @@ function Obj({
         receiveShadow
         onClick={(e) => {
           e.stopPropagation();
-          onClick();
+          useModelerStore.getState().select(obj.id);
         }}
       >
         <meshStandardMaterial
@@ -122,22 +115,11 @@ function Obj({
       </mesh>
       {selected && (
         <TransformControls
-          // eslint-disable-next-line react/no-unknown-property
           object={meshRef as React.MutableRefObject<THREE.Object3D>}
           mode={transformMode}
-          camera={camera}
-          domElement={gl.domElement}
-          onObjectChange={() => {
-            const m = meshRef.current;
-            if (!m) return;
-            onTransform({
-              position: [m.position.x, m.position.y, m.position.z],
-              rotation: [m.rotation.x, m.rotation.y, m.rotation.z],
-              scale: [m.scale.x, m.scale.y, m.scale.z],
-            });
-          }}
+          onObjectChange={handleTransform}
         />
       )}
     </>
   );
-}
+});

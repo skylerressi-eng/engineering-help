@@ -60,43 +60,48 @@ function Modeler3D({ appId }: { appId: string }) {
     [objects, selectedId],
   );
 
-  // Keyboard shortcuts: 1/2/3 = edit mode, G/R/S = transform
+  // Keyboard shortcuts: G/R/S = transform mode, Delete/Ctrl+D = object ops
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (document.activeElement?.tagName === 'INPUT') return;
-      if (e.key.toLowerCase() === 'g') setTransformMode('translate');
-      else if (e.key.toLowerCase() === 'r') setTransformMode('rotate');
-      else if (e.key.toLowerCase() === 's') setTransformMode('scale');
-      else if (e.key === 'Delete' && selectedId) remove(selectedId);
-      else if (e.key.toLowerCase() === 'd' && (e.metaKey || e.ctrlKey) && selectedId) {
+      const store = useModelerStore.getState();
+      if (e.key.toLowerCase() === 'g') store.setTransformMode('translate');
+      else if (e.key.toLowerCase() === 'r') store.setTransformMode('rotate');
+      else if (e.key.toLowerCase() === 's') store.setTransformMode('scale');
+      else if (e.key === 'Delete' && store.selectedId) store.remove(store.selectedId);
+      else if (e.key.toLowerCase() === 'd' && (e.metaKey || e.ctrlKey) && store.selectedId) {
         e.preventDefault();
-        duplicate(selectedId);
+        store.duplicate(store.selectedId);
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [selectedId, remove, duplicate, setTransformMode]);
+  }, []);
 
-  // Publish state for AI scanner
+  // Publish state for AI scanner — reads from store at scan time, no re-registration needed
   useEffect(() => {
-    return publishAppState(appId, () => ({
-      summary: `Modeler3D has ${objects.length} object(s). Transform: ${transformMode}. ${selected ? `Selected: ${selected.name} (${selected.kind})` : 'No selection.'}`,
-      state: {
-        objects: objects.map((o) => ({
-          id: o.id,
-          name: o.name,
-          kind: o.kind,
-          primitiveType: o.primitiveType,
-          position: o.position,
-          rotation: o.rotation,
-          scale: o.scale,
-          color: o.color,
-          modifiers: o.modifiers,
-        })),
-        selectedId,
-      },
-    }));
-  }, [appId, objects, selectedId, transformMode, selected]);
+    return publishAppState(appId, () => {
+      const { objects: objs, selectedId: selId, transformMode: tm } = useModelerStore.getState();
+      const sel = selId ? objs.find((o) => o.id === selId) ?? null : null;
+      return {
+        summary: `Modeler3D has ${objs.length} object(s). Transform: ${tm}. ${sel ? `Selected: ${sel.name} (${sel.kind})` : 'No selection.'}`,
+        state: {
+          objects: objs.map((o) => ({
+            id: o.id,
+            name: o.name,
+            kind: o.kind,
+            primitiveType: o.primitiveType,
+            position: o.position,
+            rotation: o.rotation,
+            scale: o.scale,
+            color: o.color,
+            modifiers: o.modifiers,
+          })),
+          selectedId: selId,
+        },
+      };
+    });
+  }, [appId]);
 
   // AI tools
   useAppTools(appId, [
