@@ -40,6 +40,14 @@ body {
   background-clip: content-box;
 }
 
+/* Dock: hide scrollbar but keep horizontal scrolling on overflow */
+.dock-scroll {
+  scrollbar-width: none;
+}
+.dock-scroll::-webkit-scrollbar {
+  display: none;
+}
+
 /* Layered glass utilities */
 .glass {
   background: rgba(255, 255, 255, 0.12);

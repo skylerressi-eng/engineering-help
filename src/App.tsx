@@ -5,6 +5,8 @@ import Dock from '@/os/Dock';
 import Window from '@/os/Window';
 import Spotlight from '@/os/Spotlight';
 import BootScreen from '@/os/BootScreen';
+import LoginScreen from '@/os/LoginScreen';
+import SimPromo from '@/os/SimPromo';
 import MobileFallback from '@/os/MobileFallback';
 import Toaster from '@/os/Toaster';
 import PowerOverlay from '@/os/PowerOverlay';
@@ -13,11 +15,14 @@ import AiFloatingButton from '@/ai/AiFloatingButton';
 import { useWindowStore } from '@/store/windowStore';
 import { useUIStore } from '@/store/uiStore';
 import { useAiStore } from '@/store/aiStore';
+import { useAuthStore } from '@/store/authStore';
 import { useSettingsStore, applyTheme } from '@/store/settingsStore';
+import { detectStripeCallback } from '@/store/subscriptionStore';
 import { useKeyboardShortcut } from '@/hooks/useKeyboardShortcut';
 import { getApp } from '@/apps/registry';
 
 export default function App() {
+  const user = useAuthStore((s) => s.user);
   const windows = useWindowStore((s) => s.windows);
   const toggleSpotlight = useUIStore((s) => s.toggleSpotlight);
   const closeSpotlight = useUIStore((s) => s.closeSpotlight);
@@ -25,14 +30,15 @@ export default function App() {
   const toggleChat = useAiStore((s) => s.toggleChat);
   const startupApps = useSettingsStore((s) => s.startupApps);
 
-  // Apply persisted theme on first paint
+  // Apply persisted theme on first paint; detect Stripe success redirect
   useEffect(() => {
     applyTheme();
+    detectStripeCallback();
   }, []);
 
   // Open startup apps once the boot animation completes
   useEffect(() => {
-    if (!booted) return;
+    if (!booted || !user) return;
     for (const id of startupApps) {
       const app = getApp(id);
       if (app) {
@@ -43,9 +49,9 @@ export default function App() {
         });
       }
     }
-    // Only run once after boot
+    // Only run once after boot + login
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [booted]);
+  }, [booted, user]);
 
   useKeyboardShortcut({ key: 'k', meta: true }, useCallback(() => toggleSpotlight(), [toggleSpotlight]));
   useKeyboardShortcut({ key: ' ', meta: true }, useCallback(() => toggleSpotlight(), [toggleSpotlight]));
@@ -69,6 +75,8 @@ export default function App() {
   return (
     <div className="fixed inset-0 overflow-hidden">
       <Desktop>
+        {/* Persistent home-screen widget */}
+        <SimPromo />
         {/* Windows live above the wallpaper, below menu bar and dock */}
         <div className="absolute inset-0" style={{ paddingTop: 28 }}>
           {windows.map((w) => (
@@ -87,6 +95,7 @@ export default function App() {
       <PowerOverlay />
 
       {!booted && <BootScreen />}
+      {booted && !user && <LoginScreen />}
       <MobileFallback />
     </div>
   );

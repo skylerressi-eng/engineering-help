@@ -12,11 +12,13 @@ import pcbdesign from './pcbdesign';
 import dataviz from './dataviz';
 import feaforge from './feaforge';
 import mechsim from './mechsim';
+import robosim from './robosim';
 import partslib from './partslib';
 import settings from './settings';
 import conway from './conway';
 
 export const APPS: Record<string, AppModule> = {
+  [robosim.manifest.id]: robosim,
   [logiclab.manifest.id]: logiclab,
   [circuitsim.manifest.id]: circuitsim,
   [pcbdesign.manifest.id]: pcbdesign,

@@ -4,6 +4,7 @@ import { useWindowStore } from '@/store/windowStore';
 import { useUIStore, WALLPAPERS } from '@/store/uiStore';
 import { useAiStore } from '@/store/aiStore';
 import { useSettingsStore } from '@/store/settingsStore';
+import { useAuthStore } from '@/store/authStore';
 import { getApp } from '@/apps/registry';
 import { EngOSMark } from './BootScreen';
 
@@ -140,7 +141,79 @@ export default function MenuBar() {
           <span className="opacity-90">{date}</span>
           <span className="font-medium">{time}</span>
         </div>
+        <UserMenu />
       </div>
+    </div>
+  );
+}
+
+function UserMenu() {
+  const user = useAuthStore((s) => s.user);
+  const signOut = useAuthStore((s) => s.signOut);
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const onDown = (e: MouseEvent) => {
+      if (open && ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    window.addEventListener('mousedown', onDown);
+    return () => window.removeEventListener('mousedown', onDown);
+  }, [open]);
+  if (!user) return null;
+  const initial = (user.name || '?').trim().charAt(0).toUpperCase();
+  return (
+    <div ref={ref} className="relative">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="flex items-center hover:bg-white/15 rounded-full p-0.5 transition-colors"
+        title={`Signed in as ${user.name}`}
+      >
+        {user.picture ? (
+          <img
+            src={user.picture}
+            alt=""
+            referrerPolicy="no-referrer"
+            className="w-5 h-5 rounded-full object-cover"
+          />
+        ) : (
+          <div className="w-5 h-5 rounded-full bg-gradient-to-br from-sky-500 to-violet-500 flex items-center justify-center text-[10px] font-semibold text-white">
+            {initial}
+          </div>
+        )}
+      </button>
+      {open && (
+        <div className="absolute top-full right-0 mt-1 glass-strong glass-edge rounded-lg py-1.5 min-w-[220px] shadow-window">
+          <div className="px-3 py-2 flex items-center gap-2.5 border-b border-white/10">
+            {user.picture ? (
+              <img
+                src={user.picture}
+                alt=""
+                referrerPolicy="no-referrer"
+                className="w-9 h-9 rounded-full object-cover"
+              />
+            ) : (
+              <div className="w-9 h-9 rounded-full bg-gradient-to-br from-sky-500 to-violet-500 flex items-center justify-center text-sm font-semibold text-white">
+                {initial}
+              </div>
+            )}
+            <div className="min-w-0">
+              <div className="text-sm text-white truncate">{user.name}</div>
+              <div className="text-[11px] text-white/55 truncate">
+                {user.email || (user.provider === 'guest' ? 'Guest session' : 'Signed in')}
+              </div>
+            </div>
+          </div>
+          <button
+            onClick={() => {
+              setOpen(false);
+              signOut();
+            }}
+            className="w-full text-left px-3 py-1.5 hover:bg-white/10 text-sm text-white/90"
+          >
+            Sign out
+          </button>
+        </div>
+      )}
     </div>
   );
 }
