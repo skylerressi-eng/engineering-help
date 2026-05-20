@@ -31,7 +31,7 @@ export default function Dock() {
           if (rect) mouseX.set(e.clientX - rect.left);
         }}
         onMouseLeave={() => mouseX.set(null)}
-        className="pointer-events-auto rounded-3xl px-3 flex items-end gap-2"
+        className="pointer-events-auto rounded-3xl px-3 flex items-end gap-2 overflow-x-auto overflow-y-hidden dock-scroll max-w-[calc(100vw-24px)]"
         style={{
           height: ICON_MAX,
           paddingBottom: 6,

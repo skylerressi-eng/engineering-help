@@ -18,13 +18,13 @@ import settings from './settings';
 import conway from './conway';
 
 export const APPS: Record<string, AppModule> = {
+  [robosim.manifest.id]: robosim,
   [logiclab.manifest.id]: logiclab,
   [circuitsim.manifest.id]: circuitsim,
   [pcbdesign.manifest.id]: pcbdesign,
   [dataviz.manifest.id]: dataviz,
   [feaforge.manifest.id]: feaforge,
   [mechsim.manifest.id]: mechsim,
-  [robosim.manifest.id]: robosim,
   [physicsbench.manifest.id]: physicsbench,
   [aerosim.manifest.id]: aerosim,
   [modeler3d.manifest.id]: modeler3d,
