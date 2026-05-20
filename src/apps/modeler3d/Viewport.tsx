@@ -36,6 +36,7 @@ export default function ModelerViewport() {
         cellThickness={0.6}
         fadeDistance={36}
         infiniteGrid
+        raycast={() => null}
       />
       <OrbitControls makeDefault enableDamping />
       <GizmoHelper alignment="top-right" margin={[60, 50]}>
