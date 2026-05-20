@@ -15,6 +15,7 @@ import mechsim from './mechsim';
 import partslib from './partslib';
 import settings from './settings';
 import conway from './conway';
+import robotsim from './robotsim';
 
 export const APPS: Record<string, AppModule> = {
   [logiclab.manifest.id]: logiclab,
@@ -24,6 +25,7 @@ export const APPS: Record<string, AppModule> = {
   [feaforge.manifest.id]: feaforge,
   [mechsim.manifest.id]: mechsim,
   [physicsbench.manifest.id]: physicsbench,
+  [robotsim.manifest.id]: robotsim,
   [aerosim.manifest.id]: aerosim,
   [modeler3d.manifest.id]: modeler3d,
   [partslib.manifest.id]: partslib,
