@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useRef } from 'react';
+import { useEffect, useMemo, useState, useRef, useCallback } from 'react';
 import {
   Box,
   Circle as CircleIcon,
@@ -41,6 +41,7 @@ function Modeler3D({ appId }: { appId: string }) {
   const objects = useModelerStore((s) => s.objects);
   const selectedId = useModelerStore((s) => s.selectedId);
   const transformMode = useModelerStore((s) => s.transformMode);
+  const [sketchOpen, setSketchOpen] = useState(false);
   const setTransformMode = useModelerStore((s) => s.setTransformMode);
   const select = useModelerStore((s) => s.select);
   const addPrimitive = useModelerStore((s) => s.addPrimitive);
@@ -282,7 +283,12 @@ function Modeler3D({ appId }: { appId: string }) {
       m.updateMatrixWorld(true);
       return m;
     });
-    if (!meshes.length) return;
+    if (!meshes.length) {
+      import('@/store/toastStore').then(({ toast }) =>
+        toast.warn('Nothing to export', 'Add some objects to the scene first.'),
+      );
+      return;
+    }
     if (format === 'obj') downloadBlob('model.obj', toOBJ(meshes), 'text/plain');
     else if (format === 'stl') downloadBlob('model.stl', toASCIISTL(meshes), 'model/stl');
     else if (format === 'stl-bin') downloadBlob('model.stl', toBinarySTL(meshes), 'model/stl');
@@ -309,7 +315,8 @@ function Modeler3D({ appId }: { appId: string }) {
   };
 
   return (
-    <div className="flex h-full">
+    <div className="flex h-full relative">
+      {sketchOpen && <SketchModal onClose={() => setSketchOpen(false)} />}
       {/* Left tool rail */}
       <div className="w-12 shrink-0 border-r border-white/10 bg-black/25 flex flex-col items-center py-2 gap-1 chrome">
         <ToolBtn
@@ -344,10 +351,10 @@ function Modeler3D({ appId }: { appId: string }) {
 
       <div className="flex-1 flex flex-col min-w-0">
         {/* Top toolbar */}
-        <div className="h-8 flex items-center px-2 gap-1 border-b border-white/10 chrome">
+        <div className="h-8 flex items-center px-2 gap-1 border-b border-white/10 chrome relative z-10">
           <PrimitiveMenu onAdd={addPrimitive} />
           <BooleanMenu />
-          <SketchButton />
+          <SketchButton onOpen={() => setSketchOpen(true)} />
           <PresetMenu3D />
           <div className="ml-auto flex items-center gap-1">
             <button
@@ -434,7 +441,7 @@ function Modeler3D({ appId }: { appId: string }) {
       {/* Right column: outliner + properties */}
       <div className="w-64 shrink-0 border-l border-white/10 bg-black/25 flex flex-col chrome">
         <div className="border-b border-white/10 max-h-56 overflow-y-auto">
-          <div className="text-[10px] uppercase text-white/45 px-3 pt-2 pb-1">Outliner</div>
+          <div className="text-[10px] uppercase text-white/45 px-3 pt-2 pb-1 pointer-events-none">Outliner</div>
           {!objects.length && (
             <div className="px-3 py-2 text-xs text-white/45">No objects</div>
           )}
@@ -479,8 +486,21 @@ function Modeler3D({ appId }: { appId: string }) {
   );
 }
 
+function useClickOutside(ref: React.RefObject<HTMLElement | null>, onClose: () => void) {
+  useEffect(() => {
+    const handler = (e: PointerEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
+    };
+    document.addEventListener('pointerdown', handler, true);
+    return () => document.removeEventListener('pointerdown', handler, true);
+  }, [ref, onClose]);
+}
+
 function PrimitiveMenu({ onAdd }: { onAdd: (t: PrimitiveType) => void }) {
   const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const close = useCallback(() => setOpen(false), []);
+  useClickOutside(ref, close);
   const items: { type: PrimitiveType; icon: any; label: string }[] = [
     { type: 'box', icon: Box, label: 'Cube' },
     { type: 'sphere', icon: CircleIcon, label: 'Sphere' },
@@ -496,7 +516,7 @@ function PrimitiveMenu({ onAdd }: { onAdd: (t: PrimitiveType) => void }) {
     { type: 'dodecahedron', icon: Box, label: 'Dodecahedron' },
   ];
   return (
-    <div className="relative">
+    <div className="relative" ref={ref}>
       <button
         onClick={() => setOpen((o) => !o)}
         className="flex items-center gap-1 px-2 h-6 rounded-md text-xs hover:bg-white/10"
@@ -530,8 +550,11 @@ function BooleanMenu() {
   const [open, setOpen] = useState(false);
   const [a, setA] = useState<string>('');
   const [b, setB] = useState<string>('');
+  const ref = useRef<HTMLDivElement>(null);
+  const close = useCallback(() => setOpen(false), []);
+  useClickOutside(ref, close);
   return (
-    <div className="relative">
+    <div className="relative" ref={ref}>
       <button
         onClick={() => setOpen((o) => !o)}
         className="flex items-center gap-1 px-2 h-6 rounded-md text-xs hover:bg-white/10"
@@ -572,6 +595,8 @@ function BooleanMenu() {
                 disabled={!a || !b || a === b}
                 onClick={() => {
                   boolean(a, b, op);
+                  setA('');
+                  setB('');
                   setOpen(false);
                 }}
                 className="px-1 py-1 rounded-md bg-accent/85 hover:bg-accent text-white text-[11px] disabled:opacity-40"
@@ -632,8 +657,11 @@ function ImportObjButton() {
 
 function ExportMenu({ onExport }: { onExport: (f: 'obj' | 'stl' | 'stl-bin' | 'gltf') => void }) {
   const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const close = useCallback(() => setOpen(false), []);
+  useClickOutside(ref, close);
   return (
-    <div className="relative">
+    <div className="relative" ref={ref}>
       <button
         onClick={() => setOpen((o) => !o)}
         className="flex items-center gap-1 px-2 h-6 rounded-md text-xs hover:bg-white/10"
@@ -956,9 +984,12 @@ function ModifierEditor({
 
 function AddModifier({ onAdd }: { onAdd: (m: Modifier) => void }) {
   const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const close = useCallback(() => setOpen(false), []);
+  useClickOutside(ref, close);
   const kinds: ModifierKind[] = ['mirror', 'array', 'solidify', 'subsurf'];
   return (
-    <div className="relative">
+    <div className="relative" ref={ref}>
       <button
         onClick={() => setOpen((o) => !o)}
         className="w-full px-2 py-1 rounded-md bg-white/5 hover:bg-white/10 text-[11px] flex items-center gap-1 justify-center"
@@ -1016,18 +1047,14 @@ function ToolBtn({
 void Eye;
 void EyeOff;
 
-function SketchButton() {
-  const [open, setOpen] = useState(false);
+function SketchButton({ onOpen }: { onOpen: () => void }) {
   return (
-    <>
-      <button
-        onClick={() => setOpen(true)}
-        className="flex items-center gap-1 px-2 h-6 rounded-md text-xs hover:bg-white/10 text-white/80"
-      >
-        <PenLine size={12} /> Sketch
-      </button>
-      {open && <SketchModal onClose={() => setOpen(false)} />}
-    </>
+    <button
+      onClick={onOpen}
+      className="flex items-center gap-1 px-2 h-6 rounded-md text-xs hover:bg-white/10 text-white/80"
+    >
+      <PenLine size={12} /> Sketch
+    </button>
   );
 }
 
@@ -1038,6 +1065,12 @@ function SketchModal({ onClose }: { onClose: () => void }) {
   const [name, setName] = useState('Sketch');
   const W = 360;
   const H = 280;
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
   const PAD = 16;
 
   const onCanvasClick = (e: React.MouseEvent<SVGSVGElement>) => {
@@ -1211,6 +1244,9 @@ const PRESET_BUILDS: Record<string, () => THREE.BufferGeometry> = {
 
 function PresetMenu3D() {
   const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const close = useCallback(() => setOpen(false), []);
+  useClickOutside(ref, close);
   const items: { id: keyof typeof PRESET_BUILDS; label: string }[] = [
     { id: 'donut', label: 'Donut' },
     { id: 'vase', label: 'Vase (Lathe)' },
@@ -1219,7 +1255,7 @@ function PresetMenu3D() {
     { id: 'table', label: 'Slab' },
   ];
   return (
-    <div className="relative">
+    <div className="relative" ref={ref}>
       <button
         onClick={() => setOpen((o) => !o)}
         className="flex items-center gap-1 px-2 h-6 rounded-md text-xs hover:bg-white/10 text-white/80"

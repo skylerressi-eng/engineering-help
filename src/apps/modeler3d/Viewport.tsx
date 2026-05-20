@@ -18,6 +18,7 @@ export default function ModelerViewport() {
       dpr={[1, 2]}
       gl={{ antialias: true }}
       shadows
+      onPointerMissed={() => useModelerStore.getState().select(null)}
     >
       <color attach="background" args={['#0b1020']} />
       <ambientLight intensity={0.5} />
