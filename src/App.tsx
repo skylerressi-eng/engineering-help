@@ -6,6 +6,7 @@ import Window from '@/os/Window';
 import Spotlight from '@/os/Spotlight';
 import BootScreen from '@/os/BootScreen';
 import LoginScreen from '@/os/LoginScreen';
+import SimPromo from '@/os/SimPromo';
 import MobileFallback from '@/os/MobileFallback';
 import Toaster from '@/os/Toaster';
 import PowerOverlay from '@/os/PowerOverlay';
@@ -16,6 +17,7 @@ import { useUIStore } from '@/store/uiStore';
 import { useAiStore } from '@/store/aiStore';
 import { useAuthStore } from '@/store/authStore';
 import { useSettingsStore, applyTheme } from '@/store/settingsStore';
+import { detectStripeCallback } from '@/store/subscriptionStore';
 import { useKeyboardShortcut } from '@/hooks/useKeyboardShortcut';
 import { getApp } from '@/apps/registry';
 
@@ -28,9 +30,10 @@ export default function App() {
   const toggleChat = useAiStore((s) => s.toggleChat);
   const startupApps = useSettingsStore((s) => s.startupApps);
 
-  // Apply persisted theme on first paint
+  // Apply persisted theme on first paint; detect Stripe success redirect
   useEffect(() => {
     applyTheme();
+    detectStripeCallback();
   }, []);
 
   // Open startup apps once the boot animation completes
@@ -72,6 +75,8 @@ export default function App() {
   return (
     <div className="fixed inset-0 overflow-hidden">
       <Desktop>
+        {/* Persistent home-screen widget */}
+        <SimPromo />
         {/* Windows live above the wallpaper, below menu bar and dock */}
         <div className="absolute inset-0" style={{ paddingTop: 28 }}>
           {windows.map((w) => (

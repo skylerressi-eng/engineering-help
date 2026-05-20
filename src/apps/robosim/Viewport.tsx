@@ -16,7 +16,7 @@ import {
 
 const ROBOT_RADIUS = 0.42;
 
-export default function Viewport() {
+export default function Viewport({ frozen = false }: { frozen?: boolean }) {
   return (
     <Canvas
       shadows
@@ -41,7 +41,7 @@ export default function Viewport() {
       />
       <directionalLight position={[-6, 5, -8]} intensity={0.4} color="#9ec5ff" />
 
-      <Scene />
+      <Scene frozen={frozen} />
       <CameraRig />
       <OrbitControls
         makeDefault
@@ -54,12 +54,12 @@ export default function Viewport() {
   );
 }
 
-function Scene() {
+function Scene({ frozen }: { frozen: boolean }) {
   const field = useRoboStore((s) => s.field);
   return (
     <>
       <FieldGeometry field={field} />
-      <RobotModel />
+      <RobotModel frozen={frozen} />
       <GamePieces field={field} />
     </>
   );
@@ -67,14 +67,14 @@ function Scene() {
 
 /* ───────────────────────── Robot ───────────────────────── */
 
-function RobotModel() {
+function RobotModel({ frozen }: { frozen: boolean }) {
   const group = useRef<THREE.Group>(null);
   const wheelRefs = useRef<(THREE.Mesh | null)[]>([null, null, null, null]);
   const wheelAngle = useRef<[number, number, number, number]>([0, 0, 0, 0]);
 
   useFrame((_, dt) => {
     const st = useRoboStore.getState();
-    if (st.enabled && st.running) {
+    if (st.enabled && st.running && !frozen) {
       // Shift = full throttle override, Ctrl = 30% precision, else slider value
       const effectiveThrottle = rawInput.precision
         ? 0.3

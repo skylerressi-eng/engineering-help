@@ -23,6 +23,8 @@ import {
 import { useAppTools } from '@/hooks/useToolRegistry';
 import { publishAppState } from '@/ai/screenScanner';
 import { toast } from '@/store/toastStore';
+import { useSubStore, isPro } from '@/store/subscriptionStore';
+import DemoGate from './DemoGate';
 import Viewport from './Viewport';
 
 const GAME_KEYS = new Set([
@@ -59,6 +61,9 @@ function RoboSim({ appId }: { appId: string }) {
   const st = useRoboStore();
   const rootRef = useRef<HTMLDivElement>(null);
   const [gamepadActive, setGamepadActive] = useState(false);
+  const [frozen, setFrozen] = useState(false);
+  const tier = useSubStore((s) => s.tier);
+  const pro = tier === 'pro' && isPro();
   const [tel, setTel] = useState<Telemetry>({
     speed: 0,
     heading: 0,
@@ -338,7 +343,9 @@ function RoboSim({ appId }: { appId: string }) {
     <div ref={rootRef} className="flex h-full">
       {/* Viewport + HUD */}
       <div className="flex-1 relative min-w-0">
-        <Viewport />
+        <DemoGate onFreeze={setFrozen}>
+          <Viewport frozen={frozen} />
+        </DemoGate>
 
         {/* Top HUD */}
         <div className="absolute top-0 left-0 right-0 flex items-center justify-between px-4 py-2 pointer-events-none">
@@ -491,13 +498,12 @@ function RoboSim({ appId }: { appId: string }) {
           </Section>
 
           {/* Drivetrain */}
-          <Section title="Drivetrain">
+          <Section title={pro ? 'Drivetrain' : 'Drivetrain  🔒 Pro'}>
             <select
-              value={st.drivetrain}
-              onChange={(e) =>
-                st.setDrivetrain(e.target.value as DrivetrainId)
-              }
-              className="w-full bg-white/5 border border-white/10 rounded-md px-2 py-1 text-xs outline-none"
+              value={pro ? st.drivetrain : 'competition'}
+              disabled={!pro}
+              onChange={(e) => pro && st.setDrivetrain(e.target.value as DrivetrainId)}
+              className="w-full bg-white/5 border border-white/10 rounded-md px-2 py-1 text-xs outline-none disabled:opacity-45"
             >
               {Object.keys(DRIVE_PRESETS).map((k) => (
                 <option key={k} value={k} className="bg-zinc-800">
@@ -517,8 +523,10 @@ function RoboSim({ appId }: { appId: string }) {
               <span>Brake mode</span>
               <input
                 type="checkbox"
-                checked={st.brakeMode}
-                onChange={(e) => st.setBrakeMode(e.target.checked)}
+                disabled={!pro}
+                checked={pro ? st.brakeMode : true}
+                onChange={(e) => pro && st.setBrakeMode(e.target.checked)}
+                className="disabled:opacity-45"
               />
             </label>
             <Slider
@@ -533,63 +541,78 @@ function RoboSim({ appId }: { appId: string }) {
             />
           </Section>
 
-          {/* Tuning */}
-          <Section title="Tuning">
-            <Slider
-              label="Mass"
-              min={25}
-              max={80}
-              step={1}
-              value={st.config.mass}
-              fmt={(v) => `${v.toFixed(0)} kg`}
-              onChange={(v) => st.patchConfig({ mass: v })}
-            />
-            <Slider
-              label="Gear ratio"
-              min={4}
-              max={20}
-              step={0.5}
-              value={st.config.gearRatio}
-              fmt={(v) => `${v.toFixed(1)}:1`}
-              onChange={(v) => st.patchConfig({ gearRatio: v })}
-            />
-            <Slider
-              label="Traction μ"
-              min={0.5}
-              max={1.4}
-              step={0.05}
-              value={st.config.mu}
-              fmt={(v) => v.toFixed(2)}
-              onChange={(v) => st.patchConfig({ mu: v })}
-            />
-            <Slider
-              label="Slew rate"
-              icon={<Zap size={11} />}
-              min={0.5}
-              max={8}
-              step={0.25}
-              value={st.config.slewRate}
-              fmt={(v) => `${v.toFixed(1)}/s`}
-              onChange={(v) => st.patchConfig({ slewRate: v })}
-            />
+          {/* Tuning — Pro only */}
+          <Section title={pro ? 'Tuning' : 'Tuning  🔒 Pro'}>
+            {pro ? (
+              <>
+                <Slider
+                  label="Mass"
+                  min={25}
+                  max={80}
+                  step={1}
+                  value={st.config.mass}
+                  fmt={(v) => `${v.toFixed(0)} kg`}
+                  onChange={(v) => st.patchConfig({ mass: v })}
+                />
+                <Slider
+                  label="Gear ratio"
+                  min={4}
+                  max={20}
+                  step={0.5}
+                  value={st.config.gearRatio}
+                  fmt={(v) => `${v.toFixed(1)}:1`}
+                  onChange={(v) => st.patchConfig({ gearRatio: v })}
+                />
+                <Slider
+                  label="Traction μ"
+                  min={0.5}
+                  max={1.4}
+                  step={0.05}
+                  value={st.config.mu}
+                  fmt={(v) => v.toFixed(2)}
+                  onChange={(v) => st.patchConfig({ mu: v })}
+                />
+                <Slider
+                  label="Slew rate"
+                  icon={<Zap size={11} />}
+                  min={0.5}
+                  max={8}
+                  step={0.25}
+                  value={st.config.slewRate}
+                  fmt={(v) => `${v.toFixed(1)}/s`}
+                  onChange={(v) => st.patchConfig({ slewRate: v })}
+                />
+              </>
+            ) : (
+              <div className="text-[11px] text-white/40 py-1">
+                Subscribe to unlock live physics tuning.
+              </div>
+            )}
           </Section>
 
-          {/* Field */}
+          {/* Field — FRC locked to Pro */}
           <Section title="Field">
             <div className="grid grid-cols-3 gap-1">
-              {(['frc', 'open', 'obstacle'] as FieldId[]).map((f) => (
-                <button
-                  key={f}
-                  onClick={() => st.setField(f)}
-                  className={`py-1 rounded-md text-[10px] ${
-                    st.field === f
-                      ? 'bg-accent text-white'
-                      : 'bg-white/5 hover:bg-white/10 text-white/70'
-                  }`}
-                >
-                  {f}
-                </button>
-              ))}
+              {(['frc', 'open', 'obstacle'] as FieldId[]).map((f) => {
+                const locked = f === 'frc' && !pro;
+                return (
+                  <button
+                    key={f}
+                    disabled={locked}
+                    onClick={() => !locked && st.setField(f)}
+                    title={locked ? 'Pro required' : undefined}
+                    className={`py-1 rounded-md text-[10px] ${
+                      locked
+                        ? 'bg-white/3 text-white/25 cursor-default'
+                        : st.field === f
+                          ? 'bg-accent text-white'
+                          : 'bg-white/5 hover:bg-white/10 text-white/70'
+                    }`}
+                  >
+                    {f}{locked ? ' 🔒' : ''}
+                  </button>
+                );
+              })}
             </div>
           </Section>
 
