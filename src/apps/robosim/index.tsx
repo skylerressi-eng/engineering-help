@@ -5,20 +5,28 @@ import type { AppModule } from '@/os/types';
 import {
   useRoboStore,
   type DrivetrainId,
+  type DronePresetId,
+  type VehicleMode,
   type FieldId,
   type CameraMode,
   type MatchPhase,
 } from '@/store/robosimStore';
 import { DRIVE_PRESETS } from './physics';
+import { DRONE_PRESETS } from './drone';
 import {
   robot,
   rawInput,
+  drone,
+  droneInput,
   pieces,
   resetRobot,
+  resetDrone,
   loadPieces,
   keyHandlers,
+  setVehicleMode,
   FIELD_BOUNDS,
   DEPOSIT_ZONES,
+  RACE_GATES,
 } from './shared';
 import { useAppTools } from '@/hooks/useToolRegistry';
 import { publishAppState } from '@/ai/screenScanner';
@@ -44,6 +52,7 @@ const GAME_KEYS = new Set([
   'ControlLeft',
   'ControlRight',
   'KeyR',
+  'KeyF',
 ]);
 
 interface Telemetry {
@@ -55,6 +64,20 @@ interface Telemetry {
   current: number;
   voltage: number;
   slip: boolean;
+}
+
+interface DroneTelemetry {
+  x: number; y: number; z: number;
+  speed: number;
+  yawDeg: number;
+  pitchDeg: number;
+  rollDeg: number;
+  thrust: number;
+  armed: boolean;
+  crashed: boolean;
+  nextGate: number;
+  lapTime: number;
+  bestLap: number;
 }
 
 function RoboSim({ appId }: { appId: string }) {
@@ -74,6 +97,14 @@ function RoboSim({ appId }: { appId: string }) {
     voltage: 12.6,
     slip: false,
   });
+  const [droneTel, setDroneTel] = useState<DroneTelemetry>({
+    x: 0, y: 1.2, z: 0,
+    speed: 0, yawDeg: 0, pitchDeg: 0, rollDeg: 0,
+    thrust: 0, armed: false, crashed: false,
+    nextGate: 0, lapTime: 0, bestLap: Infinity,
+  });
+  // Lap timing refs — live in the rAF loop, not React state
+  const lapRef = useRef({ nextGate: 0, lapStart: 0, bestLap: Infinity, inGate: false });
 
   /* ---- keyboard ---- */
   useEffect(() => {
@@ -81,9 +112,18 @@ function RoboSim({ appId }: { appId: string }) {
       if (GAME_KEYS.has(e.code)) {
         e.preventDefault();
         if (e.code === 'KeyR') {
-          const f = FIELD_BOUNDS[useRoboStore.getState().field];
-          resetRobot(0, -(f.halfZ - 1), 0);
+          const s = useRoboStore.getState();
+          if (s.vehicle === 'drone') {
+            resetDrone(0, 1.2, 0);
+          } else {
+            const f = FIELD_BOUNDS[s.field];
+            resetRobot(0, -(f.halfZ - 1), 0);
+          }
           return;
+        }
+        if (e.code === 'KeyF' && useRoboStore.getState().vehicle === 'drone') {
+          drone.armed = !drone.armed;
+          if (drone.armed) toast.success('Drone armed', 'Throttle up with Shift to take off.');
         }
         keyHandlers.down(e.code);
       }
@@ -186,37 +226,114 @@ function RoboSim({ appId }: { appId: string }) {
         }
       }
 
+      // Drone gate crossing detection
+      if (s.vehicle === 'drone' && s.field === 'drone_race') {
+        const lp = lapRef.current;
+        const gate = RACE_GATES[lp.nextGate];
+        // Transform drone position into gate-local frame
+        const dx = drone.x - gate.x;
+        const dz = drone.z - gate.z;
+        const dy = drone.y - gate.y;
+        const cy = Math.cos(-gate.rotY), sy = Math.sin(-gate.rotY);
+        const localX = dx * cy - dz * sy;
+        const localZ = dx * sy + dz * cy;
+        // Inside gate when within half-extents in X and Y, and just crossed through (Z near 0)
+        const inGate =
+          Math.abs(localX) < gate.halfW &&
+          Math.abs(dy) < gate.halfH &&
+          Math.abs(localZ) < 0.4;
+        if (inGate && !lp.inGate) {
+          lp.inGate = true;
+          lp.nextGate = (lp.nextGate + 1) % RACE_GATES.length;
+          if (lp.nextGate === 0) {
+            // Completed a lap
+            const elapsed = (now - lp.lapStart) / 1000;
+            if (elapsed < lp.bestLap) lp.bestLap = elapsed;
+            lp.lapStart = now;
+            toast.success('Lap complete!', `${elapsed.toFixed(2)}s${lp.bestLap === elapsed ? ' — new best!' : ''}`);
+          }
+        } else if (!inGate) {
+          lp.inGate = false;
+        }
+      }
+
+      // Gamepad drone axes
+      if (s.vehicle === 'drone' && gp && !keyHandlers.isActive()) {
+        const dead = (v: number) => (Math.abs(v) > 0.12 ? v : 0);
+        // Mode 2 mapping: left stick = throttle/yaw, right stick = pitch/roll
+        const rawThrottle = (-dead(gp.axes[1] ?? 0) + 1) / 2; // 0..1
+        droneInput.throttle = rawThrottle;
+        droneInput.yaw = dead(gp.axes[0] ?? 0);
+        droneInput.pitch = dead(gp.axes[3] ?? 0);
+        droneInput.roll = dead(gp.axes[2] ?? 0);
+        if (gp.buttons[0]?.pressed && !drone.armed) {
+          drone.armed = true;
+        }
+      }
+
       // throttle HUD to ~20 Hz
       acc += dt;
       if (acc >= 0.05) {
         acc = 0;
-        setTel({
-          speed: robot.speed,
-          heading: (robot.heading * 180) / Math.PI,
-          x: robot.x,
-          z: robot.z,
-          rpm:
-            (Math.abs(robot.wheelRpm[0]) +
-              Math.abs(robot.wheelRpm[1]) +
-              Math.abs(robot.wheelRpm[2]) +
-              Math.abs(robot.wheelRpm[3])) /
-            4,
-          current: robot.motorCurrent,
-          voltage: robot.batteryVoltage,
-          slip: robot.tractionLimited,
-        });
+        const lp = lapRef.current;
+        if (s.vehicle === 'drone') {
+          setDroneTel({
+            x: drone.x, y: drone.y, z: drone.z,
+            speed: drone.speed,
+            yawDeg: (drone.yaw * 180) / Math.PI,
+            pitchDeg: (drone.pitch * 180) / Math.PI,
+            rollDeg: (drone.roll * 180) / Math.PI,
+            thrust: drone.thrust,
+            armed: drone.armed,
+            crashed: drone.crashed,
+            nextGate: lp.nextGate,
+            lapTime: (now - lp.lapStart) / 1000,
+            bestLap: lp.bestLap,
+          });
+        } else {
+          setTel({
+            speed: robot.speed,
+            heading: (robot.heading * 180) / Math.PI,
+            x: robot.x,
+            z: robot.z,
+            rpm:
+              (Math.abs(robot.wheelRpm[0]) +
+                Math.abs(robot.wheelRpm[1]) +
+                Math.abs(robot.wheelRpm[2]) +
+                Math.abs(robot.wheelRpm[3])) /
+              4,
+            current: robot.motorCurrent,
+            voltage: robot.batteryVoltage,
+            slip: robot.tractionLimited,
+          });
+        }
       }
     };
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
   }, []);
 
-  /* ---- reset robot when field changes ---- */
+  /* ---- reset when field or vehicle changes ---- */
   useEffect(() => {
     const f = FIELD_BOUNDS[st.field];
     resetRobot(0, -(f.halfZ - 1), 0);
+    resetDrone(0, 1.2, 0);
     loadPieces(st.field);
-  }, [st.field]);
+    lapRef.current = { nextGate: 0, lapStart: performance.now(), bestLap: Infinity, inGate: false };
+  }, [st.field, st.vehicle]);
+
+  /* ---- sync vehicle mode singleton when store changes ---- */
+  useEffect(() => {
+    setVehicleMode(st.vehicle);
+    // Auto-switch to drone_race field when switching to drone
+    if (st.vehicle === 'drone' && st.field !== 'drone_race') {
+      st.setField('drone_race');
+      st.setCamera('chase');
+    }
+    if (st.vehicle === 'robot' && st.field === 'drone_race') {
+      st.setField('open');
+    }
+  }, [st.vehicle]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* ---- AI scanner ---- */
   useEffect(() => {
@@ -348,53 +465,74 @@ function RoboSim({ appId }: { appId: string }) {
         </DemoGate>
 
         {/* Top HUD */}
-        <div className="absolute top-0 left-0 right-0 flex items-center justify-between px-4 py-2 pointer-events-none">
-          <div
-            className={`px-3 py-1 rounded-full text-xs font-bold tracking-wider ${
-              st.enabled && st.running
-                ? 'bg-emerald-500/25 text-emerald-300'
-                : 'bg-traffic-red/20 text-traffic-red'
-            }`}
-          >
-            {st.enabled && st.running ? 'ENABLED' : 'DISABLED'}
-          </div>
-          <div className="flex items-center gap-3">
-            <div className="px-3 py-1 rounded-md glass-strong text-xs font-bold text-traffic-red">
-              RED <span className="font-mono text-sm">{st.scoreRed}</span>
+        {st.vehicle === 'drone' ? (
+          <div className="absolute top-0 left-0 right-0 flex items-center justify-between px-4 py-2 pointer-events-none">
+            <div className={`px-3 py-1 rounded-full text-xs font-bold tracking-wider ${droneTel.armed ? 'bg-emerald-500/25 text-emerald-300' : 'bg-traffic-red/20 text-traffic-red'}`}>
+              {droneTel.crashed ? 'CRASHED' : droneTel.armed ? 'ARMED' : 'DISARMED'}
             </div>
-            <div className="font-mono text-2xl text-white tabular-nums">
-              {time}
+            <div className="glass-strong px-4 py-1.5 rounded-xl text-center">
+              <div className="font-mono text-xs text-white/55">LAP</div>
+              <div className="font-mono text-xl text-white tabular-nums">{droneTel.lapTime.toFixed(1)}s</div>
+              {droneTel.bestLap < Infinity && (
+                <div className="font-mono text-[10px] text-amber-400">BEST {droneTel.bestLap.toFixed(2)}s</div>
+              )}
             </div>
-            <div className="px-3 py-1 rounded-md glass-strong text-xs font-bold text-blue-400">
-              BLUE <span className="font-mono text-sm">{st.scoreBlue}</span>
+            <div className="px-3 py-1 rounded-full glass-strong text-xs font-bold tracking-wider text-cyan-300">
+              GATE {droneTel.nextGate + 1}/{RACE_GATES.length}
             </div>
           </div>
-          <div className="px-3 py-1 rounded-full glass-strong text-xs font-bold tracking-wider text-white/80">
-            {st.phase.toUpperCase()}
+        ) : (
+          <div className="absolute top-0 left-0 right-0 flex items-center justify-between px-4 py-2 pointer-events-none">
+            <div
+              className={`px-3 py-1 rounded-full text-xs font-bold tracking-wider ${
+                st.enabled && st.running
+                  ? 'bg-emerald-500/25 text-emerald-300'
+                  : 'bg-traffic-red/20 text-traffic-red'
+              }`}
+            >
+              {st.enabled && st.running ? 'ENABLED' : 'DISABLED'}
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="px-3 py-1 rounded-md glass-strong text-xs font-bold text-traffic-red">
+                RED <span className="font-mono text-sm">{st.scoreRed}</span>
+              </div>
+              <div className="font-mono text-2xl text-white tabular-nums">
+                {time}
+              </div>
+              <div className="px-3 py-1 rounded-md glass-strong text-xs font-bold text-blue-400">
+                BLUE <span className="font-mono text-sm">{st.scoreBlue}</span>
+              </div>
+            </div>
+            <div className="px-3 py-1 rounded-full glass-strong text-xs font-bold tracking-wider text-white/80">
+              {st.phase.toUpperCase()}
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Telemetry */}
         <div className="absolute top-2 left-2 mt-9 glass-strong rounded-md px-2.5 py-2 text-[11px] font-mono text-white/85 space-y-0.5 pointer-events-none">
-          <Row k="speed" v={`${tel.speed.toFixed(2)} m/s`} />
-          <Row k="hdg" v={`${tel.heading.toFixed(0)}°`} />
-          <Row k="pos" v={`${tel.x.toFixed(1)}, ${tel.z.toFixed(1)}`} />
-          <Row k="rpm" v={tel.rpm.toFixed(0)} />
-          <Row
-            k="amps"
-            v={`${tel.current.toFixed(0)} A`}
-            warn={tel.current > 240}
-          />
-          <Row
-            k="batt"
-            v={`${tel.voltage.toFixed(1)} V`}
-            warn={tel.voltage < 9}
-          />
-          {gamepadActive && (
-            <div className="text-emerald-400">GAMEPAD</div>
-          )}
-          {tel.slip && (
-            <div className="text-amber-400 font-bold">⚠ WHEEL SLIP</div>
+          {st.vehicle === 'drone' ? (
+            <>
+              <Row k="alt" v={`${droneTel.y.toFixed(1)} m`} />
+              <Row k="spd" v={`${droneTel.speed.toFixed(1)} m/s`} />
+              <Row k="thr" v={`${(droneTel.thrust * 100).toFixed(0)}%`} warn={droneTel.thrust > 0.9} />
+              <Row k="yaw" v={`${droneTel.yawDeg.toFixed(0)}°`} />
+              <Row k="pitch" v={`${droneTel.pitchDeg.toFixed(1)}°`} />
+              <Row k="roll" v={`${droneTel.rollDeg.toFixed(1)}°`} />
+              {gamepadActive && <div className="text-emerald-400">GAMEPAD</div>}
+              {droneTel.crashed && <div className="text-red-400 font-bold animate-pulse">CRASHED · F arm</div>}
+            </>
+          ) : (
+            <>
+              <Row k="speed" v={`${tel.speed.toFixed(2)} m/s`} />
+              <Row k="hdg" v={`${tel.heading.toFixed(0)}°`} />
+              <Row k="pos" v={`${tel.x.toFixed(1)}, ${tel.z.toFixed(1)}`} />
+              <Row k="rpm" v={tel.rpm.toFixed(0)} />
+              <Row k="amps" v={`${tel.current.toFixed(0)} A`} warn={tel.current > 240} />
+              <Row k="batt" v={`${tel.voltage.toFixed(1)} V`} warn={tel.voltage < 9} />
+              {gamepadActive && <div className="text-emerald-400">GAMEPAD</div>}
+              {tel.slip && <div className="text-amber-400 font-bold">⚠ WHEEL SLIP</div>}
+            </>
           )}
         </div>
 
@@ -415,29 +553,76 @@ function RoboSim({ appId }: { appId: string }) {
           ))}
         </div>
 
-        {/* Held pieces */}
-        <div className="absolute bottom-3 right-3 glass-strong rounded-md px-3 py-2 pointer-events-none">
-          <div className="text-[9px] uppercase text-white/55 mb-1">held</div>
-          <div className="flex gap-1.5">
-            {[0, 1].map((i) => (
-              <div
-                key={i}
-                className={`w-4 h-4 rounded-full ${
-                  i < st.heldPieces
-                    ? 'bg-orange-400 shadow-[0_0_8px] shadow-orange-400'
-                    : 'border border-white/25'
-                }`}
-              />
-            ))}
+        {/* Held pieces (robot mode only) */}
+        {st.vehicle === 'robot' && (
+          <div className="absolute bottom-3 right-3 glass-strong rounded-md px-3 py-2 pointer-events-none">
+            <div className="text-[9px] uppercase text-white/55 mb-1">held</div>
+            <div className="flex gap-1.5">
+              {[0, 1].map((i) => (
+                <div
+                  key={i}
+                  className={`w-4 h-4 rounded-full ${
+                    i < st.heldPieces
+                      ? 'bg-orange-400 shadow-[0_0_8px] shadow-orange-400'
+                      : 'border border-white/25'
+                  }`}
+                />
+              ))}
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
       {/* Driver station */}
       <div className="w-64 shrink-0 border-l border-white/10 bg-black/30 flex flex-col chrome overflow-y-auto">
         <div className="p-3 space-y-3">
+
+          {/* Vehicle selector */}
+          <Section title="Vehicle">
+            <div className="grid grid-cols-2 gap-1">
+              {(['robot', 'drone'] as VehicleMode[]).map((v) => (
+                <button
+                  key={v}
+                  onClick={() => st.setVehicle(v)}
+                  className={`py-1.5 rounded-md text-xs font-semibold ${
+                    st.vehicle === v
+                      ? 'bg-accent text-white'
+                      : 'bg-white/5 hover:bg-white/10 text-white/70'
+                  }`}
+                >
+                  {v === 'robot' ? 'FRC Robot' : 'FPV Drone'}
+                </button>
+              ))}
+            </div>
+            {st.vehicle === 'drone' && (
+              <div className="mt-2 space-y-1">
+                <div className="text-[10px] text-white/45 uppercase tracking-wide mb-1">Preset</div>
+                <div className="grid grid-cols-3 gap-1">
+                  {(Object.keys(DRONE_PRESETS) as DronePresetId[]).map((p) => (
+                    <button
+                      key={p}
+                      onClick={() => st.setDronePreset(p)}
+                      className={`py-1 rounded-md text-[10px] ${
+                        st.dronePreset === p
+                          ? 'bg-cyan-600/60 text-white'
+                          : 'bg-white/5 hover:bg-white/10 text-white/70'
+                      }`}
+                    >
+                      {p}
+                    </button>
+                  ))}
+                </div>
+                <div className="text-[10px] text-white/40 font-mono mt-2 leading-relaxed border-t border-white/10 pt-2">
+                  F arm/disarm · Shift throttle up<br />
+                  Ctrl throttle down · WASD pitch/roll<br />
+                  Q/E yaw · R reset crash
+                </div>
+              </div>
+            )}
+          </Section>
+
           {/* Match control */}
-          <Section title="Match">
+          <Section title={st.vehicle === 'drone' ? 'Race' : 'Match'}>
             <div className="flex gap-1.5">
               <button
                 onClick={() =>
@@ -590,38 +775,42 @@ function RoboSim({ appId }: { appId: string }) {
             )}
           </Section>
 
-          {/* Field — FRC locked to Pro */}
-          <Section title="Field">
-            <div className="grid grid-cols-3 gap-1">
-              {(['frc', 'open', 'obstacle'] as FieldId[]).map((f) => {
-                const locked = f === 'frc' && !pro;
-                return (
-                  <button
-                    key={f}
-                    disabled={locked}
-                    onClick={() => !locked && st.setField(f)}
-                    title={locked ? 'Pro required' : undefined}
-                    className={`py-1 rounded-md text-[10px] ${
-                      locked
-                        ? 'bg-white/3 text-white/25 cursor-default'
-                        : st.field === f
-                          ? 'bg-accent text-white'
-                          : 'bg-white/5 hover:bg-white/10 text-white/70'
-                    }`}
-                  >
-                    {f}{locked ? ' 🔒' : ''}
-                  </button>
-                );
-              })}
-            </div>
-          </Section>
+          {/* Field — FRC locked to Pro; drone_race only in drone mode */}
+          {st.vehicle === 'robot' && (
+            <Section title="Field">
+              <div className="grid grid-cols-3 gap-1">
+                {(['frc', 'open', 'obstacle'] as FieldId[]).map((f) => {
+                  const locked = f === 'frc' && !pro;
+                  return (
+                    <button
+                      key={f}
+                      disabled={locked}
+                      onClick={() => !locked && st.setField(f)}
+                      title={locked ? 'Pro required' : undefined}
+                      className={`py-1 rounded-md text-[10px] ${
+                        locked
+                          ? 'bg-white/3 text-white/25 cursor-default'
+                          : st.field === f
+                            ? 'bg-accent text-white'
+                            : 'bg-white/5 hover:bg-white/10 text-white/70'
+                      }`}
+                    >
+                      {f}{locked ? ' 🔒' : ''}
+                    </button>
+                  );
+                })}
+              </div>
+            </Section>
+          )}
 
-          {/* Controls help */}
-          <div className="text-[10px] text-white/40 font-mono leading-relaxed border-t border-white/10 pt-2">
-            WASD drive · Q/E turn · Shift boost
-            <br />
-            Ctrl precision · Space intake · R reset
-          </div>
+          {/* Controls help — robot mode only (drone help shown in Vehicle section) */}
+          {st.vehicle === 'robot' && (
+            <div className="text-[10px] text-white/40 font-mono leading-relaxed border-t border-white/10 pt-2">
+              WASD drive · Q/E turn · Shift boost
+              <br />
+              Ctrl precision · Space intake · R reset
+            </div>
+          )}
 
           {/* Log */}
           {st.log.length > 0 && (

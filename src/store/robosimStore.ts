@@ -3,9 +3,12 @@ import {
   DRIVE_PRESETS,
   type DriveConfig,
 } from '@/apps/robosim/physics';
+import { DRONE_PRESETS, type DroneConfig } from '@/apps/robosim/drone';
 
 export type DrivetrainId = keyof typeof DRIVE_PRESETS;
-export type FieldId = 'frc' | 'open' | 'obstacle';
+export type DronePresetId = keyof typeof DRONE_PRESETS;
+export type VehicleMode = 'robot' | 'drone';
+export type FieldId = 'frc' | 'open' | 'obstacle' | 'drone_race';
 export type CameraMode = 'orbit' | 'chase' | 'fpv' | 'overhead';
 export type MatchPhase = 'auto' | 'teleop' | 'endgame';
 
@@ -17,6 +20,11 @@ export interface ScoredEvent {
 }
 
 interface RoboState {
+  // Vehicle
+  vehicle: VehicleMode;
+  dronePreset: DronePresetId;
+  droneConfig: DroneConfig;
+
   // Drivetrain
   drivetrain: DrivetrainId;
   config: DriveConfig;
@@ -40,6 +48,8 @@ interface RoboState {
   camera: CameraMode;
 
   // actions
+  setVehicle: (v: VehicleMode) => void;
+  setDronePreset: (p: DronePresetId) => void;
   setDrivetrain: (d: DrivetrainId) => void;
   patchConfig: (p: Partial<DriveConfig>) => void;
   setFieldOriented: (b: boolean) => void;
@@ -64,6 +74,10 @@ const PHASE_TIME: Record<MatchPhase, number> = {
 };
 
 export const useRoboStore = create<RoboState>((set, get) => ({
+  vehicle: 'robot',
+  dronePreset: 'cinematic',
+  droneConfig: { ...DRONE_PRESETS.cinematic },
+
   drivetrain: 'competition',
   config: { ...DRIVE_PRESETS.competition },
   fieldOriented: true,
@@ -83,6 +97,8 @@ export const useRoboStore = create<RoboState>((set, get) => ({
   field: 'frc',
   camera: 'chase',
 
+  setVehicle: (v) => set({ vehicle: v }),
+  setDronePreset: (p) => set({ dronePreset: p, droneConfig: { ...DRONE_PRESETS[p] } }),
   setDrivetrain: (d) =>
     set({
       drivetrain: d,

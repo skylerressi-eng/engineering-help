@@ -4,14 +4,19 @@ import { useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { useRoboStore } from '@/store/robosimStore';
 import { stepRobot, constrainToField, constrainToObstacles } from './physics';
+import { stepDrone, constrainDroneToArena } from './drone';
 import {
   robot,
   rawInput,
   pieces,
   loadPieces,
+  drone,
+  droneInput,
   FIELD_BOUNDS as FIELD,
   OBSTACLE_BOXES,
   DEPOSIT_ZONES,
+  RACE_GATES,
+  type RaceGate,
 } from './shared';
 
 const ROBOT_RADIUS = 0.42;
@@ -55,12 +60,20 @@ export default function Viewport({ frozen = false }: { frozen?: boolean }) {
 }
 
 function Scene({ frozen }: { frozen: boolean }) {
-  const field = useRoboStore((s) => s.field);
+  const field = useRoboStore((s) => s.field) as 'frc' | 'open' | 'obstacle' | 'drone_race';
+  const vehicle = useRoboStore((s) => s.vehicle);
   return (
     <>
       <FieldGeometry field={field} />
-      <RobotModel frozen={frozen} />
-      <GamePieces field={field} />
+      {vehicle === 'robot' ? (
+        <>
+          <RobotModel frozen={frozen} />
+          <GamePieces field={field} />
+        </>
+      ) : (
+        <DroneModel frozen={frozen} />
+      )}
+      {field === 'drone_race' && <DroneRaceCourse />}
     </>
   );
 }
@@ -213,9 +226,151 @@ function Arm() {
   );
 }
 
+/* ───────────────────────── Drone ───────────────────────── */
+
+function DroneModel({ frozen }: { frozen: boolean }) {
+  const groupRef = useRef<THREE.Group>(null);
+  const rotorRefs = useRef<(THREE.Mesh | null)[]>([null, null, null, null]);
+  const rotorAngle = useRef(0);
+
+  useFrame((_, dt) => {
+    const st = useRoboStore.getState();
+    if (!frozen) {
+      stepDrone(drone, st.droneConfig, droneInput, dt);
+      const f = FIELD[st.field];
+      constrainDroneToArena(drone, f.halfX, f.halfZ, 10);
+    }
+    const g = groupRef.current;
+    if (g) {
+      g.position.set(drone.x, drone.y, drone.z);
+      g.rotation.set(drone.pitch, -drone.yaw, drone.roll, 'YXZ');
+    }
+    // Spin rotors based on thrust
+    rotorAngle.current += (drone.thrust * 40 + 2) * dt;
+    for (const m of rotorRefs.current) {
+      if (m) m.rotation.y = rotorAngle.current;
+    }
+  });
+
+  // Arm positions: front-left, front-right, back-left, back-right
+  const armPos: [number, number, number][] = [
+    [-0.18, 0, 0.18],
+    [ 0.18, 0, 0.18],
+    [-0.18, 0, -0.18],
+    [ 0.18, 0, -0.18],
+  ];
+
+  return (
+    <group ref={groupRef}>
+      {/* Central frame */}
+      <mesh castShadow>
+        <boxGeometry args={[0.12, 0.025, 0.38]} />
+        <meshStandardMaterial color="#1a1a2e" metalness={0.7} roughness={0.3} />
+      </mesh>
+      <mesh castShadow>
+        <boxGeometry args={[0.38, 0.025, 0.12]} />
+        <meshStandardMaterial color="#1a1a2e" metalness={0.7} roughness={0.3} />
+      </mesh>
+      {/* Electronics stack */}
+      <mesh position={[0, 0.02, 0]} castShadow>
+        <boxGeometry args={[0.06, 0.015, 0.06]} />
+        <meshStandardMaterial color="#16213e" metalness={0.5} />
+      </mesh>
+      {/* Camera (front) */}
+      <mesh position={[0, 0.018, 0.065]} castShadow>
+        <boxGeometry args={[0.025, 0.025, 0.015]} />
+        <meshStandardMaterial color="#0f3460" metalness={0.6} roughness={0.2} />
+      </mesh>
+      {/* Arms + motors + rotors */}
+      {armPos.map((p, i) => (
+        <group key={i} position={p}>
+          {/* Motor bell */}
+          <mesh position={[0, 0.01, 0]} castShadow>
+            <cylinderGeometry args={[0.028, 0.022, 0.02, 8]} />
+            <meshStandardMaterial color={i < 2 ? '#e63946' : '#457b9d'} metalness={0.8} roughness={0.2} />
+          </mesh>
+          {/* Rotor disc */}
+          <mesh
+            ref={(m) => (rotorRefs.current[i] = m)}
+            position={[0, 0.025, 0]}
+          >
+            <cylinderGeometry args={[0.085, 0.085, 0.003, 16]} />
+            <meshStandardMaterial
+              color="#ffffff"
+              transparent
+              opacity={drone.armed ? 0.25 : 0.08}
+              side={THREE.DoubleSide}
+            />
+          </mesh>
+          {/* Prop blades (static hint) */}
+          <mesh position={[0, 0.025, 0]} rotation={[0, rotorAngle.current, 0]}>
+            <boxGeometry args={[0.16, 0.003, 0.018]} />
+            <meshStandardMaterial color="#cccccc" metalness={0.4} />
+          </mesh>
+        </group>
+      ))}
+    </group>
+  );
+}
+
+function DroneRaceCourse() {
+  return (
+    <>
+      {RACE_GATES.map((g, i) => (
+        <DroneGate key={i} gate={g} index={i} />
+      ))}
+    </>
+  );
+}
+
+function DroneGate({ gate, index }: { gate: RaceGate; index: number }) {
+  const color = index === 0 ? '#f59e0b' : '#22d3ee';
+  const emissive = index === 0 ? '#5a3800' : '#003d45';
+  const { x, y, z, rotY, halfW, halfH } = gate;
+  const w = halfW * 2;
+  const h = halfH * 2;
+  const t = 0.06;
+
+  return (
+    <group position={[x, y, z]} rotation={[0, rotY, 0]}>
+      {/* Top bar */}
+      <mesh position={[0, halfH, 0]} castShadow>
+        <boxGeometry args={[w + t * 2, t, t]} />
+        <meshStandardMaterial color={color} emissive={emissive} metalness={0.6} />
+      </mesh>
+      {/* Bottom bar */}
+      <mesh position={[0, -halfH, 0]} castShadow>
+        <boxGeometry args={[w + t * 2, t, t]} />
+        <meshStandardMaterial color={color} emissive={emissive} metalness={0.6} />
+      </mesh>
+      {/* Left post */}
+      <mesh position={[-halfW, 0, 0]} castShadow>
+        <boxGeometry args={[t, h, t]} />
+        <meshStandardMaterial color={color} emissive={emissive} metalness={0.6} />
+      </mesh>
+      {/* Right post */}
+      <mesh position={[halfW, 0, 0]} castShadow>
+        <boxGeometry args={[t, h, t]} />
+        <meshStandardMaterial color={color} emissive={emissive} metalness={0.6} />
+      </mesh>
+      {/* Gate fill plane (subtle) */}
+      <mesh>
+        <planeGeometry args={[w, h]} />
+        <meshStandardMaterial
+          color={color}
+          transparent
+          opacity={0.04}
+          side={THREE.DoubleSide}
+        />
+      </mesh>
+      {/* Gate number */}
+    </group>
+  );
+}
+
 /* ───────────────────────── Field ───────────────────────── */
 
-function FieldGeometry({ field }: { field: 'frc' | 'open' | 'obstacle' }) {
+function FieldGeometry({ field }: { field: 'frc' | 'open' | 'obstacle' | 'drone_race' }) {
   const f = FIELD[field];
   return (
     <>
@@ -384,7 +539,7 @@ function DepositZone({ field }: { field: string }) {
   );
 }
 
-function GamePieces({ field }: { field: 'frc' | 'open' | 'obstacle' }) {
+function GamePieces({ field }: { field: string }) {
   const refs = useRef<(THREE.Group | null)[]>([]);
   // Rebuild the shared piece set synchronously when the field changes so the
   // gameplay loop and the rendered meshes stay in lock-step.
@@ -428,6 +583,7 @@ function GamePieces({ field }: { field: 'frc' | 'open' | 'obstacle' }) {
 
 function CameraRig() {
   const mode = useRoboStore((s) => s.camera);
+  const vehicle = useRoboStore((s) => s.vehicle);
   const { camera } = useThree();
   const controls = useThree(
     (s) => s.controls as unknown as { enabled: boolean } | null,
@@ -438,6 +594,30 @@ function CameraRig() {
     const orbit = mode === 'orbit';
     if (controls) controls.enabled = orbit;
     if (orbit) return;
+
+    if (vehicle === 'drone') {
+      const cy = Math.cos(-drone.yaw), sy = Math.sin(-drone.yaw);
+      if (mode === 'fpv') {
+        // FPV: camera at nose, pitched slightly up with the drone attitude
+        camera.position.set(
+          drone.x + sy * 0.08,
+          drone.y + 0.02,
+          drone.z + cy * 0.08,
+        );
+        camera.rotation.set(drone.pitch - 0.15, -drone.yaw, drone.roll, 'YXZ');
+      } else if (mode === 'chase') {
+        const tx = drone.x - sy * 1.8;
+        const ty = drone.y + 0.7;
+        const tz = drone.z - cy * 1.8;
+        tmp.current.set(tx, ty, tz);
+        camera.position.lerp(tmp.current, 0.1);
+        camera.lookAt(drone.x, drone.y, drone.z);
+      } else {
+        camera.position.lerp(tmp.current.set(drone.x, drone.y + 12, drone.z + 0.01), 0.08);
+        camera.lookAt(drone.x, drone.y, drone.z);
+      }
+      return;
+    }
 
     const h = robot.heading;
     if (mode === 'chase') {

@@ -1,4 +1,5 @@
 import { makeRobotState, type RobotState, type ObstacleBox } from './physics';
+import { makeDroneState, type DroneState, type DroneInput } from './drone';
 export type { ObstacleBox };
 
 /**
@@ -18,11 +19,40 @@ export const rawInput = {
   intake: false,
 };
 
+export const drone: DroneState = makeDroneState(0, 1.2, 0);
+
+export const droneInput: DroneInput = {
+  throttle: 0,
+  pitch: 0,
+  roll: 0,
+  yaw: 0,
+  armToggle: false,
+};
+
 export const FIELD_BOUNDS: Record<string, { halfX: number; halfZ: number }> = {
   frc: { halfX: 8.0, halfZ: 4.0 },
   open: { halfX: 7.5, halfZ: 7.5 },
   obstacle: { halfX: 7.0, halfZ: 7.0 },
+  drone_race: { halfX: 12.0, halfZ: 12.0 },
 };
+
+/** Drone race gates — figure-8 course. Each gate: position, Y rotation (rad), half-size. */
+export interface RaceGate {
+  x: number; y: number; z: number;
+  rotY: number;
+  halfW: number; halfH: number;
+}
+
+export const RACE_GATES: RaceGate[] = [
+  { x:  0,   y: 2.0, z: -7,   rotY: 0,              halfW: 1.2, halfH: 1.0 },
+  { x:  5,   y: 3.0, z: -5,   rotY: -Math.PI / 4,   halfW: 1.0, halfH: 0.9 },
+  { x:  8,   y: 2.5, z:  0,   rotY: -Math.PI / 2,   halfW: 1.2, halfH: 1.0 },
+  { x:  5,   y: 1.8, z:  5,   rotY: -Math.PI * 3/4, halfW: 1.0, halfH: 0.9 },
+  { x:  0,   y: 2.0, z:  7,   rotY: Math.PI,         halfW: 1.2, halfH: 1.0 },
+  { x: -5,   y: 3.0, z:  5,   rotY: Math.PI * 3/4,  halfW: 1.0, halfH: 0.9 },
+  { x: -8,   y: 2.5, z:  0,   rotY: Math.PI / 2,    halfW: 1.2, halfH: 1.0 },
+  { x: -5,   y: 1.8, z: -5,   rotY: Math.PI / 4,    halfW: 1.0, halfH: 0.9 },
+];
 
 export interface Piece {
   x: number;
@@ -98,9 +128,23 @@ export const DEPOSIT_ZONES: Record<string, { x: number; z: number; halfW: number
   obstacle: { x: -4.5, z: -4.5, halfW: 1.5, halfD: 1.5 },
 };
 
+export function resetDrone(x = 0, y = 1.2, z = 0) {
+  drone.x = x; drone.y = y; drone.z = z;
+  drone.vx = 0; drone.vy = 0; drone.vz = 0;
+  drone.yaw = 0; drone.pitch = 0; drone.roll = 0;
+  drone.omegaYaw = 0; drone.omegaPitch = 0; drone.omegaRoll = 0;
+  drone.thrust = 0; drone.speed = 0;
+  drone.armed = false; drone.crashed = false;
+}
+
+/** Current vehicle mode — robot or drone. Mutated by index.tsx to route inputs. */
+export let vehicleMode: 'robot' | 'drone' = 'robot';
+export function setVehicleMode(m: 'robot' | 'drone') { vehicleMode = m; }
+
 export const keyHandlers = (() => {
   const keys = new Set<string>();
   const recompute = () => {
+    // Robot inputs (WASD / arrows)
     rawInput.drive =
       (keys.has('KeyW') || keys.has('ArrowUp') ? 1 : 0) -
       (keys.has('KeyS') || keys.has('ArrowDown') ? 1 : 0);
@@ -112,18 +156,34 @@ export const keyHandlers = (() => {
     rawInput.boost = keys.has('ShiftLeft') || keys.has('ShiftRight');
     rawInput.precision = keys.has('ControlLeft') || keys.has('ControlRight');
     rawInput.intake = keys.has('Space');
+
+    // Drone inputs — shares WASD/arrows for pitch+roll; Q/E yaw; Shift/Ctrl throttle
+    droneInput.pitch =
+      (keys.has('KeyS') || keys.has('ArrowDown') ? 1 : 0) -
+      (keys.has('KeyW') || keys.has('ArrowUp') ? 1 : 0);
+    droneInput.roll =
+      (keys.has('KeyD') || keys.has('ArrowRight') ? 1 : 0) -
+      (keys.has('KeyA') || keys.has('ArrowLeft') ? 1 : 0);
+    droneInput.yaw =
+      (keys.has('KeyE') ? 1 : 0) - (keys.has('KeyQ') ? 1 : 0);
+    droneInput.throttle = keys.has('ShiftLeft') || keys.has('ShiftRight') ? 1
+      : keys.has('ControlLeft') || keys.has('ControlRight') ? 0
+      : droneInput.throttle; // hold last value when no throttle key
   };
   return {
     down(code: string) {
+      if (code === 'KeyF') { droneInput.armToggle = true; }
       keys.add(code);
       recompute();
     },
     up(code: string) {
+      if (code === 'KeyF') { droneInput.armToggle = false; }
       keys.delete(code);
       recompute();
     },
     clear() {
       keys.clear();
+      droneInput.armToggle = false;
       recompute();
     },
     isActive() {
