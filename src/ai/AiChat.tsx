@@ -14,6 +14,7 @@ import {
   ChevronDown,
 } from 'lucide-react';
 import { useAiStore, AI_MODELS, type AiMessage } from '@/store/aiStore';
+import { useSettingsStore } from '@/store/settingsStore';
 import { sendMessage, abortActive } from './conversation';
 import { useRegisteredTools } from '@/hooks/useToolRegistry';
 import MessageContent from './MessageContent';
@@ -451,6 +452,75 @@ function ToolCallBlock({
   );
 }
 
+/** Inline key prompt — shown until the user provides an Anthropic API key. */
+function ApiKeyGate() {
+  const apiKey = useSettingsStore((s) => s.apiKey);
+  const setApiKey = useSettingsStore((s) => s.setApiKey);
+  const [draft, setDraft] = useState('');
+  const [editing, setEditing] = useState(false);
+
+  if (apiKey && !editing) {
+    return (
+      <div className="flex items-center justify-between gap-2 mb-2 px-2 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-[11px] text-emerald-300">
+        <span>API key set · key ••••{apiKey.slice(-4)}</span>
+        <button
+          onClick={() => {
+            setDraft('');
+            setEditing(true);
+          }}
+          className="text-emerald-300/80 hover:text-white"
+        >
+          Change
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mb-2 px-2.5 py-2 rounded-lg bg-amber-500/10 border border-amber-500/25 space-y-1.5">
+      <div className="text-[11px] text-amber-200">
+        Enter your Anthropic API key to use the assistant. It is stored only in
+        this browser.
+      </div>
+      <div className="flex items-center gap-1.5">
+        <input
+          type="password"
+          autoFocus
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && draft.trim()) {
+              setApiKey(draft);
+              setEditing(false);
+            }
+          }}
+          placeholder="sk-ant-…"
+          className="flex-1 bg-black/30 border border-white/15 rounded-md px-2 py-1 text-xs outline-none font-mono"
+        />
+        <button
+          onClick={() => {
+            if (!draft.trim()) return;
+            setApiKey(draft);
+            setEditing(false);
+          }}
+          disabled={!draft.trim()}
+          className="px-2.5 py-1 rounded-md bg-accent hover:bg-accent-hover disabled:opacity-40 text-white text-xs"
+        >
+          Save
+        </button>
+        {apiKey && (
+          <button
+            onClick={() => setEditing(false)}
+            className="px-2 py-1 rounded-md hover:bg-white/10 text-xs text-white/60"
+          >
+            Cancel
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function ChatInput({ pending }: { pending: boolean }) {
   const [value, setValue] = useState('');
   const taRef = useRef<HTMLTextAreaElement>(null);
@@ -479,6 +549,7 @@ function ChatInput({ pending }: { pending: boolean }) {
 
   return (
     <div className="border-t border-white/10 p-2">
+      <ApiKeyGate />
       <div
         className={`flex items-end gap-2 rounded-xl bg-white/5 border px-2.5 py-2 transition-colors ${
           value.trim() ? 'border-accent/40' : 'border-white/10 hover:border-white/20'

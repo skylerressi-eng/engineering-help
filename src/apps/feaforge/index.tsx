@@ -28,6 +28,9 @@ import type { TestType } from '@/lib/fea/truss3d';
 import { useAppTools } from '@/hooks/useToolRegistry';
 import { publishAppState } from '@/ai/screenScanner';
 import { toast } from '@/store/toastStore';
+import { getLibraryItems } from '@/lib/parts/library';
+import { useLibraryStore } from '@/store/libraryStore';
+import { extractSilhouette } from '@/lib/cfd/customShape';
 
 function stressColor(stress: number, maxStress: number): string {
   if (maxStress < 1) return '#94a3b8';
@@ -554,6 +557,8 @@ function FEAForge({ appId }: { appId: string }) {
             ))}
           </select>
 
+          <ModelImportMenu />
+
           <div className="relative ml-2 shrink-0">
             <button
               onClick={() => setPresetsOpen((o) => !o)}
@@ -718,6 +723,86 @@ function FEAForge({ appId }: { appId: string }) {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+/** Import any CAD-library part as a solvable planar truss of its outline. */
+function ModelImportMenu() {
+  const savedCount = useLibraryStore((s) => s.models.length);
+  const buildFromPolygon = useFeaStore((s) => s.buildFromPolygon);
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState('');
+
+  const items = open ? getLibraryItems() : [];
+  void savedCount;
+  const filtered = items.filter((it) =>
+    q ? it.name.toLowerCase().includes(q.toLowerCase()) : true,
+  );
+
+  const add = (name: string, geom: THREE.BufferGeometry) => {
+    const sil = extractSilhouette(geom);
+    geom.dispose();
+    if (sil.length < 3) {
+      toast.error('Cannot import', 'That model has no usable cross-section.');
+      return;
+    }
+    // extractSilhouette is normalised (x∈[0,1], y centred). Scale to ~3 m.
+    const S = 3;
+    buildFromPolygon(sil.map((p) => ({ x: (p.x - 0.5) * S, y: p.y * S })));
+    toast.success('Model imported', `${name} → truss · press Solve`);
+  };
+
+  return (
+    <div className="relative ml-2 shrink-0">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="flex items-center gap-1 px-2 h-6 rounded-md text-xs hover:bg-white/10"
+        title="Import a CAD-library part as an analyzable truss"
+      >
+        <Box size={12} /> Add Model <ChevronDown size={11} />
+      </button>
+      {open && (
+        <div className="absolute top-full left-0 mt-1 glass-strong rounded-md w-60 z-30 shadow-window">
+          <input
+            autoFocus
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Search parts…"
+            className="w-full bg-white/5 border-b border-white/10 px-2 py-1.5 text-xs outline-none"
+          />
+          <div className="max-h-64 overflow-y-auto py-1">
+            {filtered.length === 0 && (
+              <div className="px-2 py-1.5 text-[11px] text-white/45">
+                No matching parts.
+              </div>
+            )}
+            {filtered.map((it) => (
+              <button
+                key={it.id}
+                onClick={() => {
+                  try {
+                    add(it.name, it.build());
+                  } catch (err) {
+                    toast.error('Build failed', (err as Error).message);
+                  }
+                  setOpen(false);
+                }}
+                className="w-full text-left px-2 py-1 text-xs hover:bg-white/10 flex items-center gap-2"
+              >
+                <span
+                  className="w-2.5 h-2.5 rounded-sm shrink-0"
+                  style={{ background: it.color }}
+                />
+                <span className="truncate flex-1">{it.name}</span>
+                <span className="text-[9px] uppercase text-white/35">
+                  {it.source === 'saved' ? 'mine' : it.category}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
