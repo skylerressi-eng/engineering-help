@@ -47,6 +47,8 @@ interface FeaStore {
   setPDir: (d: [number, number, number]) => void;
   setDeltaT: (t: number) => void;
   loadPreset: (id: string) => void;
+  /** Build a solvable planar truss from a 2D silhouette (model units, metres). */
+  buildFromPolygon: (pts: { x: number; y: number }[]) => void;
   clear: () => void;
   solve: () => FeaResult3D;
 }
@@ -252,6 +254,72 @@ export const useFeaStore = create<FeaStore>((set, get) => ({
         elementFrom: null,
         rev: s.rev + 1,
       }));
+  },
+
+  buildFromPolygon: (pts) => {
+    if (pts.length < 3) return;
+    const { E, area } = get();
+    const mat = getEngMaterial(get().materialId);
+    const cx = pts.reduce((a, p) => a + p.x, 0) / pts.length;
+    const cy = pts.reduce((a, p) => a + p.y, 0) / pts.length;
+    // Collision-safe prefixes: addNode/finishElement mint `n{seq}`/`e{seq}`
+    // starting at 1, so generated ids must not use that scheme.
+    const nodes = pts.map((p, i) => ({
+      id: `mn${i + 1}`,
+      x: p.x,
+      y: p.y,
+      z: 0,
+      fixX: false,
+      fixY: false,
+      fixZ: false,
+    }));
+    const center = {
+      id: `mn${pts.length + 1}`,
+      x: cx,
+      y: cy,
+      z: 0,
+      fixX: false,
+      fixY: false,
+      fixZ: false,
+    };
+    nodes.push(center);
+    // Pin the two lowest perimeter nodes so the structure is stable.
+    const byY = nodes.slice(0, pts.length).sort((a, b) => a.y - b.y);
+    for (const n of byY.slice(0, 2)) {
+      n.fixX = n.fixY = n.fixZ = true;
+    }
+    const elements: FeaModel3D['elements'] = [];
+    let ei = 1;
+    for (let i = 0; i < pts.length; i++) {
+      const a = nodes[i].id;
+      const b = nodes[(i + 1) % pts.length].id;
+      elements.push({ id: `me${ei++}`, a, b, E, A: area, alpha: mat.alpha });
+      // Spoke to centroid — triangulates the polygon so it isn't a mechanism.
+      elements.push({
+        id: `me${ei++}`,
+        a,
+        b: center.id,
+        E,
+        A: area,
+        alpha: mat.alpha,
+      });
+    }
+    // A downward load on the highest node so a solve shows something useful.
+    const top = nodes
+      .slice(0, pts.length)
+      .reduce((hi, n) => (n.y > hi.y ? n : hi), nodes[0]);
+    set((s) => ({
+      model: {
+        ...s.model,
+        nodes,
+        elements,
+        loads: [{ node: top.id, fx: 0, fy: -5000, fz: 0 }],
+      },
+      result: null,
+      selectedNode: null,
+      elementFrom: null,
+      rev: s.rev + 1,
+    }));
   },
 
   clear: () =>

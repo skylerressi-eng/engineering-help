@@ -1,4 +1,4 @@
-import { Canvas, useThree } from '@react-three/fiber';
+import { Canvas } from '@react-three/fiber';
 import {
   OrbitControls,
   TransformControls,
@@ -6,7 +6,7 @@ import {
   GizmoHelper,
   GizmoViewport,
 } from '@react-three/drei';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { useModelerStore, type SceneObject } from '@/store/modelerStore';
 import { applyStack } from '@/lib/modeler/modifiers';
@@ -18,6 +18,7 @@ export default function ModelerViewport() {
       dpr={[1, 2]}
       gl={{ antialias: true }}
       shadows
+      onPointerMissed={() => useModelerStore.getState().select(null)}
     >
       <color attach="background" args={['#0b1020']} />
       <ambientLight intensity={0.5} />
@@ -35,6 +36,7 @@ export default function ModelerViewport() {
         cellThickness={0.6}
         fadeDistance={36}
         infiniteGrid
+        raycast={() => null}
       />
       <OrbitControls makeDefault enableDamping />
       <GizmoHelper alignment="top-right" margin={[60, 50]}>
@@ -46,114 +48,80 @@ export default function ModelerViewport() {
 
 function SceneObjects() {
   const objects = useModelerStore((s) => s.objects);
-  const selectedId = useModelerStore((s) => s.selectedId);
-  const transformMode = useModelerStore((s) => s.transformMode);
-  const select = useModelerStore((s) => s.select);
-  const setTransform = useModelerStore((s) => s.setTransform);
-  const { camera, gl } = useThree();
-  const meshRefs = useRef<Map<string, THREE.Mesh>>(new Map());
-  // refTick bumps every time a child registers/deregisters a mesh ref so we
-  // can re-render and pick up the latest mesh in the TransformControls JSX.
-  const [refTick, setRefTick] = useState(0);
-  const bump = () => setRefTick((t) => t + 1);
-  void refTick;
-
-  const selectedMesh = selectedId ? meshRefs.current.get(selectedId) : null;
 
   return (
     <>
       {objects.map((o) => (
-        <Obj
-          key={o.id}
-          obj={o}
-          onClick={() => select(o.id)}
-          meshRefs={meshRefs}
-          onRefChange={bump}
-        />
+        <Obj key={o.id} obj={o} />
       ))}
-      {selectedId && selectedMesh && (
-        <TransformControls
-          // eslint-disable-next-line react/no-unknown-property
-          object={selectedMesh}
-          mode={transformMode}
-          camera={camera}
-          domElement={gl.domElement}
-          onObjectChange={() => {
-            const mesh = meshRefs.current.get(selectedId);
-            if (!mesh) return;
-            setTransform(selectedId, {
-              position: [mesh.position.x, mesh.position.y, mesh.position.z],
-              rotation: [mesh.rotation.x, mesh.rotation.y, mesh.rotation.z],
-              scale: [mesh.scale.x, mesh.scale.y, mesh.scale.z],
-            });
-          }}
-        />
-      )}
     </>
   );
 }
 
-function Obj({
-  obj,
-  onClick,
-  meshRefs,
-  onRefChange,
-}: {
-  obj: SceneObject;
-  onClick: () => void;
-  meshRefs: React.MutableRefObject<Map<string, THREE.Mesh>>;
-  onRefChange: () => void;
-}) {
-  const selectedId = useModelerStore((s) => s.selectedId);
-  const isSelected = selectedId === obj.id;
+/**
+ * Renders one scene object as a mesh. Subscribes directly to the store for
+ * `selected` and `transformMode` so that only the affected Obj re-renders on
+ * selection change. Does NOT use useThree — instead lets drei's TransformControls
+ * manage its own camera/domElement subscriptions internally, which avoids
+ * subscribing this component to the full R3F state.
+ */
+const Obj = React.memo(function Obj({ obj }: { obj: SceneObject }) {
+  const selected = useModelerStore((s) => s.selectedId === obj.id);
+  const transformMode = useModelerStore((s) => s.transformMode);
+  const meshRef = useRef<THREE.Mesh>(null);
 
-  // Apply modifier stack only when geometry or modifiers change
   const geom = useMemo(() => {
     if (!obj.modifiers.length) return obj.geometry;
     return applyStack(obj.geometry, obj.modifiers);
   }, [obj.geometry, obj.modifiers]);
 
-  // Dispose previously generated geometries when this one changes
   useEffect(() => {
     return () => {
       if (geom !== obj.geometry) geom.dispose();
     };
   }, [geom, obj.geometry]);
 
+  const handleTransform = useCallback(() => {
+    const m = meshRef.current;
+    if (!m) return;
+    useModelerStore.getState().setTransform(obj.id, {
+      position: [m.position.x, m.position.y, m.position.z],
+      rotation: [m.rotation.x, m.rotation.y, m.rotation.z],
+      scale: [m.scale.x, m.scale.y, m.scale.z],
+    });
+  }, [obj.id]);
+
   return (
-    <mesh
-      ref={(m) => {
-        if (m) {
-          meshRefs.current.set(obj.id, m);
-          onRefChange();
-        } else if (meshRefs.current.has(obj.id)) {
-          meshRefs.current.delete(obj.id);
-          onRefChange();
-        }
-      }}
-      geometry={geom}
-      position={obj.position}
-      rotation={obj.rotation}
-      scale={obj.scale}
-      castShadow
-      receiveShadow
-      onClick={(e) => {
-        e.stopPropagation();
-        onClick();
-      }}
-    >
-      <meshStandardMaterial
-        color={obj.color}
-        metalness={obj.metalness}
-        roughness={obj.roughness}
-        emissive={obj.emissive}
-        emissiveIntensity={obj.emissive === '#000000' ? 0 : 0.5}
-        wireframe={obj.wireframe}
-      />
-      {isSelected && (
-        // eslint-disable-next-line react/no-unknown-property
-        <meshBasicMaterial attach="material" wireframe color="#0A84FF" transparent opacity={0.0} />
+    <>
+      <mesh
+        ref={meshRef}
+        geometry={geom}
+        position={obj.position}
+        rotation={obj.rotation}
+        scale={obj.scale}
+        castShadow
+        receiveShadow
+        onClick={(e) => {
+          e.stopPropagation();
+          useModelerStore.getState().select(obj.id);
+        }}
+      >
+        <meshStandardMaterial
+          color={obj.color}
+          metalness={obj.metalness}
+          roughness={obj.roughness}
+          emissive={selected ? '#0A84FF' : obj.emissive}
+          emissiveIntensity={selected ? 0.15 : (obj.emissive === '#000000' ? 0 : 0.5)}
+          wireframe={obj.wireframe}
+        />
+      </mesh>
+      {selected && (
+        <TransformControls
+          object={meshRef as React.MutableRefObject<THREE.Object3D>}
+          mode={transformMode}
+          onObjectChange={handleTransform}
+        />
       )}
-    </mesh>
+    </>
   );
-}
+});

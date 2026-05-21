@@ -29,6 +29,8 @@ interface SettingsStore {
   customWallpaper: string | null;
   startupApps: string[];
   aiModel: string;
+  /** Anthropic API key (stored locally; required for the AI assistant). */
+  apiKey: string;
   historyEnabled: boolean;
   bindings: KeyBinding[];
 
@@ -40,6 +42,7 @@ interface SettingsStore {
   setCustomWallpaper: (s: string | null) => void;
   toggleStartupApp: (id: string) => void;
   setAiModel: (m: string) => void;
+  setApiKey: (k: string) => void;
   setHistoryEnabled: (b: boolean) => void;
   setBinding: (id: string, combo: string) => void;
   reset: () => void;
@@ -80,6 +83,7 @@ function persist(s: SettingsStore) {
         customWallpaper: s.customWallpaper,
         startupApps: s.startupApps,
         aiModel: s.aiModel,
+        apiKey: s.apiKey,
         historyEnabled: s.historyEnabled,
         bindings: s.bindings,
       }),
@@ -112,6 +116,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   customWallpaper: initial.customWallpaper ?? null,
   startupApps: initial.startupApps ?? [],
   aiModel: initial.aiModel ?? 'claude-sonnet-4-20250514',
+  apiKey: initial.apiKey ?? '',
   historyEnabled: initial.historyEnabled ?? true,
   bindings: initial.bindings ?? DEFAULT_BINDINGS,
 
@@ -153,6 +158,10 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     set({ aiModel: m });
     persist(get());
   },
+  setApiKey: (k) => {
+    set({ apiKey: k.trim() });
+    persist(get());
+  },
   setHistoryEnabled: (b) => {
     set({ historyEnabled: b });
     persist(get());
@@ -174,6 +183,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       customWallpaper: null,
       startupApps: [],
       aiModel: 'claude-sonnet-4-20250514',
+      apiKey: '',
       historyEnabled: true,
       bindings: DEFAULT_BINDINGS,
     });

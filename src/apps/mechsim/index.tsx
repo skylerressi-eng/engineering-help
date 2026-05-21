@@ -210,28 +210,59 @@ function StructuralTab() {
 
   const W = 520;
   const H = 110;
-  const plot = (vals: number[], color: string) => {
+  const plot = (vals: number[], color: string, unit: string, scale = 1) => {
+    const n = vals.length;
     const max = Math.max(...vals.map(Math.abs), 1e-9);
+    const px = (i: number) => (i / (n - 1)) * W;
+    const py = (v: number) => H / 2 - (v / max) * (H / 2 - 14);
     const d = vals
-      .map(
-        (v, i) =>
-          `${i === 0 ? 'M' : 'L'} ${(i / (vals.length - 1)) * W},${H / 2 - (v / max) * (H / 2 - 8)}`,
-      )
+      .map((v, i) => `${i === 0 ? 'M' : 'L'} ${px(i).toFixed(1)},${py(v).toFixed(1)}`)
       .join(' ');
+    // Peak (largest magnitude) and where along the span it occurs.
+    let pi = 0;
+    for (let i = 1; i < n; i++) if (Math.abs(vals[i]) > Math.abs(vals[pi])) pi = i;
+    const peakX = res.x[pi] ?? (pi / (n - 1)) * L;
+    const labelLeft = px(pi) > W * 0.6;
     return (
       <svg
         width="100%"
         viewBox={`0 0 ${W} ${H}`}
         className="bg-black/30 rounded-md"
       >
-        <line
-          x1={0}
-          y1={H / 2}
-          x2={W}
-          y2={H / 2}
-          stroke="rgba(255,255,255,0.2)"
-        />
+        <line x1={0} y1={H / 2} x2={W} y2={H / 2} stroke="rgba(255,255,255,0.2)" />
         <path d={d} fill="none" stroke={color} strokeWidth={1.6} />
+        {/* peak marker */}
+        <line
+          x1={px(pi)}
+          y1={py(vals[pi])}
+          x2={px(pi)}
+          y2={H / 2}
+          stroke={color}
+          strokeOpacity={0.4}
+          strokeDasharray="2 2"
+        />
+        <circle cx={px(pi)} cy={py(vals[pi])} r={3} fill={color} />
+        <text
+          x={labelLeft ? px(pi) - 6 : px(pi) + 6}
+          y={py(vals[pi]) < H / 2 ? py(vals[pi]) - 5 : py(vals[pi]) + 12}
+          fontSize={10}
+          fill={color}
+          textAnchor={labelLeft ? 'end' : 'start'}
+          fontFamily="monospace"
+        >
+          {(vals[pi] * scale).toFixed(2)} {unit} @ x={peakX.toFixed(2)} m
+        </text>
+        {/* x-axis endpoints */}
+        <text x={2} y={H - 3} fontSize={9} fill="rgba(255,255,255,0.4)">0</text>
+        <text
+          x={W - 2}
+          y={H - 3}
+          fontSize={9}
+          fill="rgba(255,255,255,0.4)"
+          textAnchor="end"
+        >
+          L = {L} m
+        </text>
       </svg>
     );
   };
@@ -265,22 +296,22 @@ function StructuralTab() {
         <Block
           title={`Deflection — max ${(res.maxDeflection * 1000).toFixed(3)} mm`}
         >
-          {plot(res.deflection, '#22d3ee')}
+          {plot(res.deflection, '#22d3ee', 'mm', 1000)}
         </Block>
         <Block
           title={`Bending Moment — max ${(res.maxMoment / 1000).toFixed(2)} kN·m`}
         >
-          {plot(res.moment, '#f59e0b')}
+          {plot(res.moment, '#f59e0b', 'kN·m', 0.001)}
         </Block>
         <Block
           title={`Shear Force — max ${(Math.max(...res.shear.map(Math.abs)) / 1000).toFixed(2)} kN`}
         >
-          {plot(res.shear, '#a78bfa')}
+          {plot(res.shear, '#a78bfa', 'kN', 0.001)}
         </Block>
         <Block
           title={`Bending Stress — max ${(res.maxStress / 1e6).toFixed(1)} MPa`}
         >
-          {plot(res.stress, '#ef4444')}
+          {plot(res.stress, '#ef4444', 'MPa', 1e-6)}
         </Block>
       </div>
       <div className="w-60 shrink-0 border-l border-white/10 bg-black/25 p-3 chrome overflow-y-auto space-y-2">

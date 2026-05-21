@@ -1,10 +1,19 @@
 /**
- * Streaming Anthropic Messages API client. The artifact host injects the API
- * key, so we DO NOT add one here. We talk to the host's proxy at the documented
- * URL and parse SSE events.
+ * Streaming Anthropic Messages API client. The user supplies their own
+ * Anthropic API key (stored locally in settings); it is sent with each
+ * request via the `x-api-key` header.
  */
 
 import type { ToolDefinition } from './toolRegistry';
+import { useSettingsStore } from '@/store/settingsStore';
+
+/** Thrown when no API key is configured. The UI prompts the user for one. */
+export class MissingApiKeyError extends Error {
+  constructor() {
+    super('No Anthropic API key set. Add one in the AI panel to start chatting.');
+    this.name = 'MissingApiKeyError';
+  }
+}
 
 const API_URL = 'https://api.anthropic.com/v1/messages';
 
@@ -66,6 +75,13 @@ export async function streamMessage(req: StreamRequest, cb: StreamCallbacks): Pr
     })),
   };
 
+  const apiKey = useSettingsStore.getState().apiKey.trim();
+  if (!apiKey) {
+    const err = new MissingApiKeyError();
+    cb.onError?.(err);
+    throw err;
+  }
+
   let res: Response;
   try {
     res = await fetch(API_URL, {
@@ -73,6 +89,8 @@ export async function streamMessage(req: StreamRequest, cb: StreamCallbacks): Pr
       headers: {
         'Content-Type': 'application/json',
         'anthropic-version': '2023-06-01',
+        'x-api-key': apiKey,
+        'anthropic-dangerous-direct-browser-access': 'true',
       },
       body: JSON.stringify(body),
       signal: req.signal,
