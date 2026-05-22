@@ -20,6 +20,7 @@ import { useSettingsStore, applyTheme } from '@/store/settingsStore';
 import { detectStripeCallback } from '@/store/subscriptionStore';
 import { useKeyboardShortcut } from '@/hooks/useKeyboardShortcut';
 import { getApp } from '@/apps/registry';
+import { isGoogleConfigured } from '@/lib/googleAuth';
 
 export default function App() {
   const user = useAuthStore((s) => s.user);
@@ -95,7 +96,7 @@ export default function App() {
       <PowerOverlay />
 
       {!booted && <BootScreen />}
-      {booted && !user && <LoginScreen />}
+      {booted && !user && isGoogleConfigured() && <LoginScreen />}
       <MobileFallback />
     </div>
   );

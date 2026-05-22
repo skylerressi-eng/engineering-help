@@ -35,6 +35,19 @@ function load(): AuthUser | null {
   }
 }
 
+function autoGuest(): AuthUser {
+  const user: AuthUser = {
+    sub: `guest-${Math.random().toString(36).slice(2, 10)}`,
+    email: '',
+    name: 'Guest',
+    picture: '',
+    provider: 'guest',
+    signedInAt: Date.now(),
+  };
+  save(user);
+  return user;
+}
+
 function save(user: AuthUser | null) {
   try {
     if (user) localStorage.setItem(STORAGE_KEY, JSON.stringify(user));
@@ -45,7 +58,7 @@ function save(user: AuthUser | null) {
 }
 
 export const useAuthStore = create<AuthStore>((set) => ({
-  user: load(),
+  user: load() ?? autoGuest(),
   signInWithGoogle: (p) => {
     const user: AuthUser = {
       sub: p.sub,
@@ -72,8 +85,15 @@ export const useAuthStore = create<AuthStore>((set) => ({
     set({ user });
   },
   signOut: () => {
-    save(null);
-    set({ user: null });
-    void import('@/lib/googleAuth').then(({ googleSignOut }) => googleSignOut());
+    void import('@/lib/googleAuth').then(({ googleSignOut, isGoogleConfigured }) => {
+      googleSignOut();
+      if (isGoogleConfigured()) {
+        save(null);
+        set({ user: null });
+      } else {
+        const guest = autoGuest();
+        set({ user: guest });
+      }
+    });
   },
 }));

@@ -25,7 +25,9 @@ const FREE_FEATURES = [
 ];
 
 export default function SimPromo() {
-  const [dismissed, setDismissed] = useState(false);
+  const [dismissed, setDismissed] = useState(
+    () => sessionStorage.getItem('simPromo.dismissed') === '1',
+  );
   const tier = useSubStore((s) => s.tier);
   const expiresAt = useSubStore((s) => s.expiresAt);
   const openApp = useWindowStore((s) => s.openApp);
@@ -58,7 +60,10 @@ export default function SimPromo() {
             style={{ background: 'linear-gradient(135deg,#f59e0b22 0%,#ef444422 100%)' }}
           >
             <button
-              onClick={() => setDismissed(true)}
+              onClick={() => {
+              setDismissed(true);
+              sessionStorage.setItem('simPromo.dismissed', '1');
+            }}
               className="absolute top-2 right-2 text-white/40 hover:text-white/80 transition-colors"
             >
               <X size={13} />
