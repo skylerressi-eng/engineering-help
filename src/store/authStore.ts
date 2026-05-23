@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { GoogleProfile } from '@/lib/googleAuth';
+import { isGoogleConfigured, type GoogleProfile } from '@/lib/googleAuth';
 
 const STORAGE_KEY = 'engos.auth.v1';
 
@@ -85,15 +85,13 @@ export const useAuthStore = create<AuthStore>((set) => ({
     set({ user });
   },
   signOut: () => {
-    void import('@/lib/googleAuth').then(({ googleSignOut, isGoogleConfigured }) => {
-      googleSignOut();
-      if (isGoogleConfigured()) {
-        save(null);
-        set({ user: null });
-      } else {
-        const guest = autoGuest();
-        set({ user: guest });
-      }
-    });
+    if (isGoogleConfigured()) {
+      save(null);
+      set({ user: null });
+    } else {
+      const guest = autoGuest();
+      set({ user: guest });
+    }
+    void import('@/lib/googleAuth').then(({ googleSignOut }) => googleSignOut());
   },
 }));

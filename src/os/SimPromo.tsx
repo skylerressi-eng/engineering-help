@@ -24,10 +24,26 @@ const FREE_FEATURES = [
   'Competition drivetrain only',
 ];
 
+const DISMISS_KEY = 'simPromo.dismissed';
+
+function readDismissed(): boolean {
+  try {
+    return sessionStorage.getItem(DISMISS_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function writeDismissed() {
+  try {
+    sessionStorage.setItem(DISMISS_KEY, '1');
+  } catch {
+    // storage unavailable (sandboxed iframe, private mode quota) — in-memory state still hides it for this mount
+  }
+}
+
 export default function SimPromo() {
-  const [dismissed, setDismissed] = useState(
-    () => sessionStorage.getItem('simPromo.dismissed') === '1',
-  );
+  const [dismissed, setDismissed] = useState(readDismissed);
   const tier = useSubStore((s) => s.tier);
   const expiresAt = useSubStore((s) => s.expiresAt);
   const openApp = useWindowStore((s) => s.openApp);
@@ -61,9 +77,9 @@ export default function SimPromo() {
           >
             <button
               onClick={() => {
-              setDismissed(true);
-              sessionStorage.setItem('simPromo.dismissed', '1');
-            }}
+                setDismissed(true);
+                writeDismissed();
+              }}
               className="absolute top-2 right-2 text-white/40 hover:text-white/80 transition-colors"
             >
               <X size={13} />
