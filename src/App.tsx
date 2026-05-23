@@ -79,7 +79,7 @@ export default function App() {
         {/* Persistent home-screen widget */}
         <SimPromo />
         {/* Windows live above the wallpaper, below menu bar and dock */}
-        <div className="absolute inset-0" style={{ paddingTop: 28 }}>
+        <div className="absolute inset-0 pointer-events-none" style={{ paddingTop: 28 }}>
           {windows.map((w) => (
             <Window key={w.id} state={w} />
           ))}

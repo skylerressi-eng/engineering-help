@@ -56,7 +56,7 @@ export default function Window({ state }: { state: WindowState }) {
             })
           }
           style={{ zIndex: state.zIndex }}
-          className="absolute"
+          className="absolute pointer-events-auto"
         >
           <motion.div
             initial={{ opacity: 0, scale: 0.93 }}
