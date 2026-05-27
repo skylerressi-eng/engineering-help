@@ -1,12 +1,22 @@
 /**
- * Streaming Anthropic Messages API client. The artifact host injects the API
- * key, so we DO NOT add one here. We talk to the host's proxy at the documented
- * URL and parse SSE events.
+ * Streaming Anthropic Messages API client. The user supplies their own API key
+ * via Settings → AI; we attach it as `x-api-key` and call api.anthropic.com
+ * directly from the browser.
  */
 
 import type { ToolDefinition } from './toolRegistry';
+import { useSettingsStore } from '@/store/settingsStore';
 
 const API_URL = 'https://api.anthropic.com/v1/messages';
+
+export class MissingApiKeyError extends Error {
+  constructor() {
+    super(
+      'No Anthropic API key configured. Open Settings → AI and paste your key (starts with sk-ant-).',
+    );
+    this.name = 'MissingApiKeyError';
+  }
+}
 
 export interface ApiMessage {
   role: 'user' | 'assistant';
@@ -66,6 +76,13 @@ export async function streamMessage(req: StreamRequest, cb: StreamCallbacks): Pr
     })),
   };
 
+  const apiKey = useSettingsStore.getState().aiApiKey.trim();
+  if (!apiKey) {
+    const err = new MissingApiKeyError();
+    cb.onError?.(err);
+    throw err;
+  }
+
   let res: Response;
   try {
     res = await fetch(API_URL, {
@@ -73,6 +90,9 @@ export async function streamMessage(req: StreamRequest, cb: StreamCallbacks): Pr
       headers: {
         'Content-Type': 'application/json',
         'anthropic-version': '2023-06-01',
+        'x-api-key': apiKey,
+        // Anthropic's CORS guard requires an explicit opt-in for browser calls.
+        'anthropic-dangerous-direct-browser-access': 'true',
       },
       body: JSON.stringify(body),
       signal: req.signal,

@@ -345,27 +345,70 @@ export default function Renderer() {
       trails.clear();
     }
 
-    // Bodies
+    // Cast soft shadows beneath each body (faked using a downward-offset blur)
+    ctx.save();
+    ctx.globalAlpha = 0.32;
+    ctx.fillStyle = 'rgba(0,0,0,1)';
+    for (const b of world.bodies) {
+      if (b.isStatic) continue;
+      ctx.save();
+      ctx.translate(b.pos.x + 0.05, b.pos.y + 0.12);
+      ctx.rotate(b.angle);
+      ctx.beginPath();
+      if (b.shape.kind === 'circle') {
+        ctx.arc(0, 0, b.shape.radius * 1.02, 0, Math.PI * 2);
+      } else {
+        const verts = b.shape.vertices;
+        ctx.moveTo(verts[0].x, verts[0].y);
+        for (let i = 1; i < verts.length; i++) ctx.lineTo(verts[i].x, verts[i].y);
+        ctx.closePath();
+      }
+      ctx.filter = 'blur(1.5px)';
+      ctx.fill();
+      ctx.filter = 'none';
+      ctx.restore();
+    }
+    ctx.restore();
+
+    // Bodies — rendered with a radial gradient that fakes a top-lit sphere /
+    // bevelled extrusion so the canvas reads as 3D rather than flat 2D.
     for (const b of world.bodies) {
       ctx.save();
       ctx.translate(b.pos.x, b.pos.y);
       ctx.rotate(b.angle);
-      ctx.fillStyle = b.color;
-      ctx.strokeStyle = b.id === selectedId ? '#0A84FF' : 'rgba(0,0,0,0.45)';
-      ctx.lineWidth = (b.id === selectedId ? 2.4 : 1.4) / scale;
       if (b.sleeping && debug.sleep) {
         ctx.globalAlpha = 0.45;
       }
+      // Build a radial gradient: bright top-left highlight → solid body color
+      // → darker bottom-right edge.
+      const radial = ctx.createRadialGradient(
+        -0.3, -0.3, 0.02,
+        0, 0, b.shape.kind === 'circle' ? b.shape.radius * 1.3 : 1.0,
+      );
+      const c = b.color;
+      radial.addColorStop(0, mixColor(c, '#ffffff', 0.55));
+      radial.addColorStop(0.45, c);
+      radial.addColorStop(1, mixColor(c, '#000000', 0.35));
+      ctx.fillStyle = radial;
+      ctx.strokeStyle = b.id === selectedId ? '#0A84FF' : 'rgba(0,0,0,0.55)';
+      ctx.lineWidth = (b.id === selectedId ? 2.4 : 1.4) / scale;
       if (b.shape.kind === 'circle') {
         ctx.beginPath();
         ctx.arc(0, 0, b.shape.radius, 0, Math.PI * 2);
         ctx.fill();
         ctx.stroke();
+        // Glossy highlight arc
+        ctx.beginPath();
+        ctx.arc(-b.shape.radius * 0.35, -b.shape.radius * 0.35, b.shape.radius * 0.45, Math.PI * 0.95, Math.PI * 1.5);
+        ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+        ctx.lineWidth = b.shape.radius * 0.12;
+        ctx.stroke();
         // Orientation tick
         ctx.beginPath();
         ctx.moveTo(0, 0);
         ctx.lineTo(b.shape.radius, 0);
-        ctx.strokeStyle = 'rgba(0,0,0,0.45)';
+        ctx.strokeStyle = 'rgba(0,0,0,0.55)';
+        ctx.lineWidth = 1.2 / scale;
         ctx.stroke();
       } else {
         ctx.beginPath();
@@ -374,6 +417,14 @@ export default function Renderer() {
         for (let i = 1; i < verts.length; i++) ctx.lineTo(verts[i].x, verts[i].y);
         ctx.closePath();
         ctx.fill();
+        ctx.stroke();
+        // Top-edge highlight: brighter rim on the upper edge facing the light
+        ctx.beginPath();
+        ctx.moveTo(verts[0].x, verts[0].y);
+        for (let i = 1; i < verts.length; i++) ctx.lineTo(verts[i].x, verts[i].y);
+        ctx.closePath();
+        ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+        ctx.lineWidth = 1 / scale;
         ctx.stroke();
       }
       ctx.globalAlpha = 1;
@@ -484,6 +535,36 @@ export default function Renderer() {
       />
     </div>
   );
+}
+
+function mixColor(a: string, b: string, t: number): string {
+  const pa = parseHex(a);
+  const pb = parseHex(b);
+  if (!pa || !pb) return a;
+  const r = Math.round(pa[0] * (1 - t) + pb[0] * t);
+  const g = Math.round(pa[1] * (1 - t) + pb[1] * t);
+  const bl = Math.round(pa[2] * (1 - t) + pb[2] * t);
+  return `rgb(${r},${g},${bl})`;
+}
+
+function parseHex(c: string): [number, number, number] | null {
+  if (c.startsWith('#') && (c.length === 7 || c.length === 4)) {
+    if (c.length === 4) {
+      return [
+        parseInt(c[1] + c[1], 16),
+        parseInt(c[2] + c[2], 16),
+        parseInt(c[3] + c[3], 16),
+      ];
+    }
+    return [
+      parseInt(c.slice(1, 3), 16),
+      parseInt(c.slice(3, 5), 16),
+      parseInt(c.slice(5, 7), 16),
+    ];
+  }
+  const m = c.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
+  if (m) return [+m[1], +m[2], +m[3]];
+  return null;
 }
 
 function cursorForTool(t: Tool): string {

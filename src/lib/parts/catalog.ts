@@ -6,6 +6,89 @@
 import * as THREE from 'three';
 import { csg } from '@/lib/modeler/csg';
 
+/* ---------------- Geometry helpers ---------------- */
+
+/** Concatenate buffer geometries into one — much cheaper than CSG when the
+ *  shapes don't actually intersect (e.g. layering a thread spiral on top of a
+ *  shank, dotting rollers around a hub). */
+function mergeMany(geoms: THREE.BufferGeometry[]): THREE.BufferGeometry {
+  const positions: number[] = [];
+  for (const g of geoms) {
+    const pg = g.index ? g.toNonIndexed() : g;
+    const pos = pg.attributes.position.array as Float32Array;
+    for (let i = 0; i < pos.length; i++) positions.push(pos[i]);
+  }
+  const out = new THREE.BufferGeometry();
+  out.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  out.computeVertexNormals();
+  return out;
+}
+
+/** Helical thread ridge — a thin tube wound around the +Y axis between
+ *  yBottom..yTop. Used to give bolts and screws a real machined-thread look
+ *  instead of a smooth shank. */
+function helicalThread(opts: {
+  D: number;
+  yBottom: number;
+  yTop: number;
+  pitch?: number;
+  depth?: number;
+  radial?: number;
+}): THREE.BufferGeometry {
+  const { D, yBottom, yTop } = opts;
+  const length = yTop - yBottom;
+  if (length <= 0) return new THREE.BufferGeometry();
+  const pitch = opts.pitch ?? Math.max(D * 0.35, 0.08);
+  const depth = opts.depth ?? D * 0.08;
+  const radial = opts.radial ?? 6;
+  const turns = Math.max(1, length / pitch);
+  const segs = Math.max(48, Math.floor(turns * 24));
+  const pts: THREE.Vector3[] = [];
+  // Lead-in and lead-out below/above the actual thread span so the tube ends
+  // tuck into the shank rather than floating in air.
+  for (let i = 0; i <= segs; i++) {
+    const t = i / segs;
+    const angle = t * turns * Math.PI * 2;
+    const r = (D / 2) + depth * 0.5;
+    pts.push(
+      new THREE.Vector3(
+        r * Math.cos(angle),
+        yBottom + t * length,
+        r * Math.sin(angle),
+      ),
+    );
+  }
+  const curve = new THREE.CatmullRomCurve3(pts, false, 'catmullrom', 0.5);
+  return new THREE.TubeGeometry(curve, segs, depth, radial, false);
+}
+
+/** Phillips cross-slot — two thin boxes crossing at 90°, sized to bite into a
+ *  screw head. Caller subtracts this from the head. */
+function phillipsSlot(D: number, depth: number, headTop: number): {
+  geom: THREE.BufferGeometry;
+  mat: THREE.Matrix4;
+} {
+  const w = D * 0.18;
+  const l = D * 1.0;
+  const a = new THREE.BoxGeometry(l, depth, w);
+  const b = new THREE.BoxGeometry(w, depth, l);
+  const merged = mergeMany([a, b]);
+  const m = new THREE.Matrix4().makeTranslation(0, headTop - depth / 2, 0);
+  return { geom: merged, mat: m };
+}
+
+/** Straight slot — single bar across a screw head. */
+function slotHead(D: number, depth: number, headTop: number): {
+  geom: THREE.BufferGeometry;
+  mat: THREE.Matrix4;
+} {
+  const w = D * 0.18;
+  const l = D * 1.4;
+  const slot = new THREE.BoxGeometry(l, depth, w);
+  const m = new THREE.Matrix4().makeTranslation(0, headTop - depth / 2, 0);
+  return { geom: slot, mat: m };
+}
+
 export interface ParamDef {
   key: string;
   label: string;
@@ -47,39 +130,112 @@ function hexBolt(p: Record<string, number>): THREE.BufferGeometry {
   const D = p.diameter;
   const L = p.length;
   const headH = D * 0.7;
-  const headR = D * 0.9;
-  // Hex head: 6-sided prism via CylinderGeometry with 6 segments
-  const head = new THREE.CylinderGeometry(headR, headR, headH, 6);
-  // Shank
-  const shank = new THREE.CylinderGeometry(D / 2, D / 2, L, 24);
-  // Position pieces in world: head at top, shank descends.
-  const headMat = new THREE.Matrix4().makeTranslation(0, headH / 2, 0);
+  const headR = D * 0.95;
+  // Hex head with chamfered top edge — two stacked frustums for the bevel.
+  const headChamfer = D * 0.12;
+  const headTop = new THREE.CylinderGeometry(headR * 0.92, headR, headChamfer, 6);
+  const headMid = new THREE.CylinderGeometry(headR, headR, headH - headChamfer * 2, 6);
+  const headBot = new THREE.CylinderGeometry(headR, headR * 0.92, headChamfer, 6);
+  const head = mergeMany([
+    moved(headTop, 0, headH - headChamfer / 2, 0),
+    moved(headMid, 0, headH / 2, 0),
+    moved(headBot, 0, headChamfer / 2, 0),
+  ]);
+  const shank = new THREE.CylinderGeometry(D / 2, D / 2, L, 28);
   const shankMat = new THREE.Matrix4().makeTranslation(0, -L / 2, 0);
-  // Combine via CSG union for a clean welded result
-  return csg(head, headMat, shank, shankMat, 'union');
+  // Helical thread on the bottom ~70% of the shank (the upper 30% is the
+  // unthreaded shoulder — that's how real hex bolts are machined).
+  const threadTop = -L * 0.25;
+  const threadBot = -L + D * 0.15;
+  const threads = helicalThread({ D, yBottom: threadBot, yTop: threadTop, pitch: D * 0.4 });
+  // Chamfered tip
+  const tip = new THREE.CylinderGeometry(D / 2, D * 0.32, D * 0.18, 24);
+  const tipMat = new THREE.Matrix4().makeTranslation(0, -L + D * 0.09, 0);
+  return mergeMany([
+    head,
+    transformed(shank, shankMat),
+    threads,
+    transformed(tip, tipMat),
+  ]);
+}
+
+function moved(g: THREE.BufferGeometry, x: number, y: number, z: number): THREE.BufferGeometry {
+  const c = g.clone();
+  c.translate(x, y, z);
+  return c;
+}
+
+function transformed(g: THREE.BufferGeometry, m: THREE.Matrix4): THREE.BufferGeometry {
+  const c = g.clone();
+  c.applyMatrix4(m);
+  return c;
 }
 
 function socketScrew(p: Record<string, number>): THREE.BufferGeometry {
   const D = p.diameter;
   const L = p.length;
-  const headH = D * 0.9;
-  const headR = D * 0.85;
-  const head = new THREE.CylinderGeometry(headR, headR, headH, 24);
-  const shank = new THREE.CylinderGeometry(D / 2, D / 2, L, 24);
-  // Hex socket: a small hexagonal hole in the head
-  const socket = new THREE.CylinderGeometry(D * 0.45, D * 0.45, headH * 0.7, 6);
-  const headMat = new THREE.Matrix4().makeTranslation(0, headH / 2, 0);
-  const shankMat = new THREE.Matrix4().makeTranslation(0, -L / 2, 0);
-  const socketMat = new THREE.Matrix4().makeTranslation(0, headH * 0.7, 0);
-  const headWithSocket = csg(head, headMat, socket, socketMat, 'subtract');
-  return csg(headWithSocket, new THREE.Matrix4(), shank, shankMat, 'union');
+  const headH = D * 0.95;
+  const headR = D * 0.82;
+  // Cylindrical head with a knurled-style rim by stacking two small frustums
+  // (top chamfer) so the silhouette looks like a real socket cap screw.
+  const headTop = new THREE.CylinderGeometry(headR * 0.93, headR, D * 0.1, 32);
+  const headBody = new THREE.CylinderGeometry(headR, headR, headH - D * 0.1, 32);
+  const headRaw = mergeMany([
+    moved(headTop, 0, headH - D * 0.05, 0),
+    moved(headBody, 0, (headH - D * 0.1) / 2, 0),
+  ]);
+  // Internal hex socket — subtract a 6-sided prism (real screws are hex, not
+  // round). Using csg here gives a clean hole.
+  const socket = new THREE.CylinderGeometry(D * 0.4, D * 0.4, headH * 0.7, 6);
+  const headWithSocket = csg(
+    headRaw,
+    new THREE.Matrix4(),
+    socket,
+    new THREE.Matrix4().makeTranslation(0, headH * 0.65, 0),
+    'subtract',
+  );
+  const shank = new THREE.CylinderGeometry(D / 2, D / 2, L, 28);
+  const threads = helicalThread({
+    D,
+    yBottom: -L + D * 0.12,
+    yTop: -D * 0.1,
+    pitch: D * 0.35,
+  });
+  const tip = new THREE.CylinderGeometry(D / 2, D * 0.3, D * 0.18, 24);
+  return mergeMany([
+    headWithSocket,
+    moved(shank, 0, -L / 2, 0),
+    threads,
+    moved(tip, 0, -L + D * 0.09, 0),
+  ]);
 }
 
 function nutHex(p: Record<string, number>): THREE.BufferGeometry {
   const D = p.diameter;
-  const ring = new THREE.CylinderGeometry(D * 0.85, D * 0.85, D * 0.7, 6);
-  const hole = new THREE.CylinderGeometry(D / 2, D / 2, D, 24);
-  return csg(ring, new THREE.Matrix4(), hole, new THREE.Matrix4(), 'subtract');
+  const acrossFlats = D * 1.7;
+  const acrossCorners = acrossFlats / Math.cos(Math.PI / 6);
+  const h = D * 0.85;
+  const chamfer = D * 0.12;
+  // Chamfered hex: top + bottom frustums + straight middle.
+  const top = new THREE.CylinderGeometry(acrossCorners / 2 * 0.92, acrossCorners / 2, chamfer, 6);
+  const mid = new THREE.CylinderGeometry(acrossCorners / 2, acrossCorners / 2, h - chamfer * 2, 6);
+  const bot = new THREE.CylinderGeometry(acrossCorners / 2, acrossCorners / 2 * 0.92, chamfer, 6);
+  const body = mergeMany([
+    moved(top, 0, h / 2 - chamfer / 2, 0),
+    moved(mid, 0, 0, 0),
+    moved(bot, 0, -h / 2 + chamfer / 2, 0),
+  ]);
+  const hole = new THREE.CylinderGeometry(D / 2, D / 2, h * 1.5, 32);
+  const bored = csg(body, new THREE.Matrix4(), hole, new THREE.Matrix4(), 'subtract');
+  // Internal threads visible looking into the bore
+  const threads = helicalThread({
+    D: D * 1.02,
+    yBottom: -h / 2 + chamfer,
+    yTop: h / 2 - chamfer,
+    pitch: D * 0.35,
+    depth: D * 0.05,
+  });
+  return mergeMany([bored, threads]);
 }
 
 function washer(p: Record<string, number>): THREE.BufferGeometry {
@@ -260,57 +416,133 @@ function steppedShaft(p: Record<string, number>): THREE.BufferGeometry {
 function flatHeadScrew(p: Record<string, number>): THREE.BufferGeometry {
   const D = p.diameter;
   const L = p.length;
-  const headH = D * 0.4;
-  const headR = D * 1.0;
-  // Countersunk head: cone-frustum
-  const head = new THREE.CylinderGeometry(headR, D / 2, headH, 24);
-  const shank = new THREE.CylinderGeometry(D / 2, D / 2, L, 24);
-  const headMat = new THREE.Matrix4().makeTranslation(0, headH / 2, 0);
-  const shankMat = new THREE.Matrix4().makeTranslation(0, -L / 2, 0);
-  return csg(head, headMat, shank, shankMat, 'union');
+  const headH = D * 0.45;
+  const headR = D * 1.05;
+  // Countersunk cone (wide top tapering down to the shank radius).
+  const head = new THREE.CylinderGeometry(headR, D / 2, headH, 32);
+  const headRaw = moved(head, 0, headH / 2, 0);
+  // Phillips slot in the top
+  const slot = phillipsSlot(D, D * 0.18, headH);
+  const headSlotted = csg(headRaw, new THREE.Matrix4(), slot.geom, slot.mat, 'subtract');
+  const shank = new THREE.CylinderGeometry(D / 2, D / 2, L, 28);
+  const threads = helicalThread({
+    D,
+    yBottom: -L + D * 0.12,
+    yTop: -D * 0.05,
+    pitch: D * 0.32,
+  });
+  const tip = new THREE.CylinderGeometry(D / 2, 0, D * 0.5, 24); // pointed self-tapping tip
+  return mergeMany([
+    headSlotted,
+    moved(shank, 0, -L / 2 + D * 0.12, 0),
+    threads,
+    moved(tip, 0, -L + D * 0.12, 0),
+  ]);
 }
 
 function panHeadScrew(p: Record<string, number>): THREE.BufferGeometry {
   const D = p.diameter;
   const L = p.length;
-  const headH = D * 0.55;
+  const headH = D * 0.5;
   const headR = D * 0.95;
-  const head = new THREE.SphereGeometry(headR, 24, 12, 0, Math.PI * 2, 0, Math.PI / 2);
-  const shank = new THREE.CylinderGeometry(D / 2, D / 2, L, 24);
-  const headMat = new THREE.Matrix4().makeTranslation(0, headH * 0.2, 0);
-  const shankMat = new THREE.Matrix4().makeTranslation(0, -L / 2, 0);
-  return csg(head, headMat, shank, shankMat, 'union');
+  // Domed top — a sphere section sliced flat at its equator gives the
+  // classic pan-head profile.
+  const head = new THREE.SphereGeometry(headR, 32, 16, 0, Math.PI * 2, 0, Math.PI / 2);
+  const headBase = new THREE.CylinderGeometry(headR, headR * 0.96, headH * 0.2, 32);
+  const headRaw = mergeMany([
+    moved(head, 0, headH * 0.2, 0),
+    moved(headBase, 0, headH * 0.1, 0),
+  ]);
+  const slot = phillipsSlot(D, D * 0.18, headH * 1.1);
+  const headSlotted = csg(headRaw, new THREE.Matrix4(), slot.geom, slot.mat, 'subtract');
+  const shank = new THREE.CylinderGeometry(D / 2, D / 2, L, 28);
+  const threads = helicalThread({
+    D,
+    yBottom: -L + D * 0.12,
+    yTop: -D * 0.05,
+    pitch: D * 0.32,
+  });
+  const tip = new THREE.CylinderGeometry(D / 2, D * 0.25, D * 0.22, 24);
+  return mergeMany([
+    headSlotted,
+    moved(shank, 0, -L / 2, 0),
+    threads,
+    moved(tip, 0, -L + D * 0.11, 0),
+  ]);
 }
 
 function buttonHeadScrew(p: Record<string, number>): THREE.BufferGeometry {
   const D = p.diameter;
   const L = p.length;
-  const head = new THREE.SphereGeometry(D * 0.85, 24, 12, 0, Math.PI * 2, 0, Math.PI / 2);
-  const shank = new THREE.CylinderGeometry(D / 2, D / 2, L, 24);
-  return csg(
-    head, new THREE.Matrix4(),
-    shank, new THREE.Matrix4().makeTranslation(0, -L / 2, 0),
-    'union',
+  const headR = D * 0.9;
+  const head = new THREE.SphereGeometry(headR, 32, 16, 0, Math.PI * 2, 0, Math.PI / 2);
+  // Internal hex socket
+  const socket = new THREE.CylinderGeometry(D * 0.32, D * 0.32, headR * 0.7, 6);
+  const headBored = csg(
+    head,
+    new THREE.Matrix4(),
+    socket,
+    new THREE.Matrix4().makeTranslation(0, headR * 0.55, 0),
+    'subtract',
   );
+  const shank = new THREE.CylinderGeometry(D / 2, D / 2, L, 28);
+  const threads = helicalThread({
+    D,
+    yBottom: -L + D * 0.12,
+    yTop: -D * 0.05,
+    pitch: D * 0.32,
+  });
+  const tip = new THREE.CylinderGeometry(D / 2, D * 0.3, D * 0.18, 24);
+  return mergeMany([
+    headBored,
+    moved(shank, 0, -L / 2, 0),
+    threads,
+    moved(tip, 0, -L + D * 0.09, 0),
+  ]);
 }
 
 function setScrew(p: Record<string, number>): THREE.BufferGeometry {
   const D = p.diameter;
   const L = p.length;
-  const body = new THREE.CylinderGeometry(D / 2, D / 2, L, 24);
-  // Internal hex socket
-  const socket = new THREE.CylinderGeometry(D * 0.4, D * 0.4, L * 0.4, 6);
-  return csg(
-    body, new THREE.Matrix4(),
-    socket, new THREE.Matrix4().makeTranslation(0, L * 0.3, 0),
+  const body = new THREE.CylinderGeometry(D / 2, D / 2, L, 28);
+  const socket = new THREE.CylinderGeometry(D * 0.32, D * 0.32, L * 0.35, 6);
+  const bored = csg(
+    body,
+    new THREE.Matrix4(),
+    socket,
+    new THREE.Matrix4().makeTranslation(0, L * 0.33, 0),
     'subtract',
   );
+  // Full-length thread (set screws are threaded end-to-end)
+  const threads = helicalThread({
+    D,
+    yBottom: -L / 2 + D * 0.1,
+    yTop: L / 2 - D * 0.1,
+    pitch: D * 0.32,
+  });
+  // Cup-point bottom (concave)
+  const cup = new THREE.CylinderGeometry(D * 0.35, D * 0.35, D * 0.12, 16);
+  const bottomed = csg(
+    bored,
+    new THREE.Matrix4(),
+    cup,
+    new THREE.Matrix4().makeTranslation(0, -L / 2 + D * 0.05, 0),
+    'subtract',
+  );
+  return mergeMany([bottomed, threads]);
 }
 
 function threadedRod(p: Record<string, number>): THREE.BufferGeometry {
   const D = p.diameter;
   const L = p.length;
-  return new THREE.CylinderGeometry(D / 2, D / 2, L, 24);
+  const core = new THREE.CylinderGeometry(D / 2, D / 2, L, 28);
+  const threads = helicalThread({
+    D,
+    yBottom: -L / 2 + D * 0.1,
+    yTop: L / 2 - D * 0.1,
+    pitch: D * 0.4,
+  });
+  return mergeMany([core, threads]);
 }
 
 function eyeBolt(p: Record<string, number>): THREE.BufferGeometry {
@@ -395,9 +627,15 @@ function fenderWasher(p: Record<string, number>): THREE.BufferGeometry {
 function rivet(p: Record<string, number>): THREE.BufferGeometry {
   const D = p.diameter;
   const L = p.length;
-  const head = new THREE.SphereGeometry(D * 0.9, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2);
-  const shank = new THREE.CylinderGeometry(D / 2, D / 2, L, 16);
-  return csg(head, new THREE.Matrix4(), shank, new THREE.Matrix4().makeTranslation(0, -L / 2, 0), 'union');
+  const head = new THREE.SphereGeometry(D * 0.9, 24, 12, 0, Math.PI * 2, 0, Math.PI / 2);
+  const shank = new THREE.CylinderGeometry(D / 2, D / 2, L, 24);
+  // Mandrel — central pull-pin that protrudes from the head (typical pop rivet)
+  const mandrel = new THREE.CylinderGeometry(D * 0.18, D * 0.18, D * 1.3, 16);
+  return mergeMany([
+    head,
+    moved(shank, 0, -L / 2, 0),
+    moved(mandrel, 0, D * 0.7, 0),
+  ]);
 }
 
 /* ---------------- Gears ---------------- */
@@ -918,44 +1156,198 @@ function angleIron(p: Record<string, number>): THREE.BufferGeometry {
 
 /* ---------------- Wheels ---------------- */
 
+/** Build a wheel whose axis is the world X axis. Returns:
+ *  - a black tire profile (outer toroidal band with a tread groove)
+ *  - a metallic hub disc with spoke cut-outs
+ *  - a central bore for the axle  */
+function buildRoadWheel(D: number, w: number, bore: number, spokes: number): THREE.BufferGeometry {
+  const tireR = D / 2;
+  const rimR = D * 0.36;
+  const hubR = D * 0.18;
+
+  // Tire: extruded ring with a slight crown — make it from a Lathe so the
+  // sidewall has a real profile.
+  const tirePts: THREE.Vector2[] = [];
+  const halfW = w / 2;
+  // start at inner radius bottom, walk outwards to outer crown then back.
+  tirePts.push(new THREE.Vector2(rimR, -halfW));
+  tirePts.push(new THREE.Vector2(rimR + D * 0.02, -halfW));
+  tirePts.push(new THREE.Vector2(tireR * 0.985, -halfW * 0.7));
+  tirePts.push(new THREE.Vector2(tireR, -halfW * 0.35));
+  tirePts.push(new THREE.Vector2(tireR, halfW * 0.35));
+  tirePts.push(new THREE.Vector2(tireR * 0.985, halfW * 0.7));
+  tirePts.push(new THREE.Vector2(rimR + D * 0.02, halfW));
+  tirePts.push(new THREE.Vector2(rimR, halfW));
+  const tire = new THREE.LatheGeometry(tirePts, 64);
+  // Tread blocks — small box bumps around the outer crown
+  const treadParts: THREE.BufferGeometry[] = [];
+  const N = 28;
+  for (let i = 0; i < N; i++) {
+    const a = (i / N) * Math.PI * 2;
+    const tb = new THREE.BoxGeometry(D * 0.05, w * 0.7, D * 0.025);
+    tb.translate(0, 0, tireR + D * 0.01);
+    tb.rotateY(a);
+    treadParts.push(tb);
+  }
+
+  // Rim — narrow ring at rimR
+  const rim = new THREE.CylinderGeometry(rimR, rimR, w * 0.6, 48);
+  const rimInner = new THREE.CylinderGeometry(rimR * 0.92, rimR * 0.92, w * 0.7, 48);
+  const rimShell = csg(rim, new THREE.Matrix4(), rimInner, new THREE.Matrix4(), 'subtract');
+
+  // Hub disc with spoke holes
+  let hubDisc: THREE.BufferGeometry = new THREE.CylinderGeometry(rimR * 0.98, rimR * 0.98, w * 0.18, 48);
+  // Cut spoke windows
+  for (let i = 0; i < spokes; i++) {
+    const a = (i / spokes) * Math.PI * 2;
+    const win = new THREE.BoxGeometry(rimR * 0.55, w * 0.4, D * 0.07);
+    win.translate(rimR * 0.55, 0, 0);
+    win.rotateY(a);
+    hubDisc = csg(hubDisc, new THREE.Matrix4(), win, new THREE.Matrix4(), 'subtract');
+  }
+  // Central hub
+  const centerHub = new THREE.CylinderGeometry(hubR, hubR, w * 0.55, 32);
+  hubDisc = csg(hubDisc, new THREE.Matrix4(), centerHub, new THREE.Matrix4(), 'union');
+
+  // Bore through everything
+  const boreCyl = new THREE.CylinderGeometry(bore / 2, bore / 2, w * 1.5, 24);
+  const tireBored = csg(tire, new THREE.Matrix4(), boreCyl, new THREE.Matrix4(), 'subtract');
+  const hubBored = csg(hubDisc, new THREE.Matrix4(), boreCyl, new THREE.Matrix4(), 'subtract');
+  const rimBored = csg(rimShell, new THREE.Matrix4(), boreCyl, new THREE.Matrix4(), 'subtract');
+
+  // Lay axis along X (so positive X = wheel face direction)
+  const out = mergeMany([tireBored, hubBored, rimBored, ...treadParts]);
+  out.rotateZ(Math.PI / 2);
+  return out;
+}
+
 function casterWheel(p: Record<string, number>): THREE.BufferGeometry {
+  // Smaller wheel with no spokes — just a solid hub.
   const D = p.diameter;
   const w = p.width;
   const bore = p.bore;
-  const wheel = new THREE.CylinderGeometry(D / 2, D / 2, w, 32);
-  wheel.rotateZ(Math.PI / 2);
-  const boreCyl = new THREE.CylinderGeometry(bore / 2, bore / 2, w * 2, 16);
-  boreCyl.rotateZ(Math.PI / 2);
-  return csg(wheel, new THREE.Matrix4(), boreCyl, new THREE.Matrix4(), 'subtract');
+  return buildRoadWheel(D, w, bore, 3);
 }
 
 function plainWheel(p: Record<string, number>): THREE.BufferGeometry {
-  return casterWheel(p);
+  const D = p.diameter;
+  const w = p.width;
+  const bore = p.bore;
+  const spokes = Math.max(4, Math.round(p.spokes ?? 6));
+  return buildRoadWheel(D, w, bore, spokes);
 }
 
+/** Roller-wheel: rollers oriented so their axes are TANGENT to the wheel rim
+ *  (perpendicular to the spoke radius). This is what makes an omni wheel
+ *  actually slide laterally. */
 function omniWheel(p: Record<string, number>): THREE.BufferGeometry {
   const D = p.diameter;
   const w = p.width;
   const bore = p.bore;
-  const hub = new THREE.CylinderGeometry(D * 0.35, D * 0.35, w, 24);
-  hub.rotateZ(Math.PI / 2);
-  let g: THREE.BufferGeometry = hub;
-  // Roller pockets around the rim — small cylinders perpendicular to the wheel axis
-  const N = 12;
+  const N = Math.max(8, Math.round(p.rollers ?? 12));
+  const rollerR = D * 0.075;
+  const ringR = D / 2 - rollerR * 1.05;
+  // Wheel-axis is X (we'll rotate at the end). Spokes lie in the Y/Z plane.
+  // Central hub
+  const hub = new THREE.CylinderGeometry(ringR * 0.55, ringR * 0.55, w * 0.95, 32);
+  // Two annular side plates that retain the rollers
+  const sideR = D / 2 * 0.96;
+  const side = new THREE.CylinderGeometry(sideR, sideR, w * 0.08, 48);
+  const sideBoreCut = new THREE.CylinderGeometry(ringR * 0.8, ringR * 0.8, w * 0.2, 48);
+  const sideCut = csg(side, new THREE.Matrix4(), sideBoreCut, new THREE.Matrix4(), 'subtract');
+  const sideA = transformed(sideCut, new THREE.Matrix4().makeTranslation(0, w * 0.46, 0));
+  const sideB = transformed(sideCut, new THREE.Matrix4().makeTranslation(0, -w * 0.46, 0));
+  // Spokes between hub and the side rings
+  const spokes: THREE.BufferGeometry[] = [];
   for (let i = 0; i < N; i++) {
     const a = (i / N) * Math.PI * 2;
-    const r = new THREE.CylinderGeometry(D * 0.1, D * 0.1, w * 0.95, 14);
-    r.rotateX(Math.PI / 2);
-    const m = new THREE.Matrix4().makeTranslation(0, Math.cos(a) * D * 0.45, Math.sin(a) * D * 0.45);
-    g = csg(g, new THREE.Matrix4(), r, m, 'union');
+    const sp = new THREE.BoxGeometry(ringR * 0.92, w * 0.85, D * 0.04);
+    sp.translate(ringR * 0.46, 0, 0);
+    sp.rotateY(a);
+    spokes.push(sp);
   }
-  const boreCyl = new THREE.CylinderGeometry(bore / 2, bore / 2, w * 2, 16);
-  boreCyl.rotateZ(Math.PI / 2);
-  return csg(g, new THREE.Matrix4(), boreCyl, new THREE.Matrix4(), 'subtract');
+  // Rollers — barrel-shaped (slightly tapered) and oriented so their length
+  // runs TANGENT to the rim circle (perpendicular to both the radial spoke
+  // and the wheel's central axis). After the final rotateZ at the bottom of
+  // this function, the wheel axis is +X.
+  const rollers: THREE.BufferGeometry[] = [];
+  for (let i = 0; i < N; i++) {
+    const a = (i / N) * Math.PI * 2;
+    const barrelPts: THREE.Vector2[] = [];
+    const halfRL = ringR * Math.PI / N * 0.98;
+    const segs = 10;
+    for (let k = 0; k <= segs; k++) {
+      const t = k / segs;
+      const y = (t - 0.5) * 2 * halfRL;
+      const rad = rollerR * (1 - 0.6 * (t * 2 - 1) * (t * 2 - 1));
+      barrelPts.push(new THREE.Vector2(Math.max(rad, 0.001), y));
+    }
+    const roller = new THREE.LatheGeometry(barrelPts, 14);
+    // Lathe → axis Y. Wheel axis is also Y here (pre-final rotateZ at the
+    // bottom). Rotate axis Y→Z so the roller lies along the rim's tangent,
+    // translate out to the rim radius, then orbit around Y to angle a.
+    roller.rotateX(Math.PI / 2);
+    roller.translate(ringR, 0, 0);
+    roller.rotateY(a);
+    rollers.push(roller);
+  }
+  // Bore through wheel axis
+  const boreCyl = new THREE.CylinderGeometry(bore / 2, bore / 2, w * 1.5, 24);
+  let body = mergeMany([hub, sideA, sideB, ...spokes]);
+  body = csg(body, new THREE.Matrix4(), boreCyl, new THREE.Matrix4(), 'subtract');
+  const merged = mergeMany([body, ...rollers]);
+  merged.rotateZ(Math.PI / 2); // wheel axis along world X
+  return merged;
 }
 
+/** Mecanum wheel: rollers offset at ±45° helix angle (a + or − chirality
+ *  depending on which corner of the robot). We pick + here. */
 function mecanumWheel(p: Record<string, number>): THREE.BufferGeometry {
-  return omniWheel(p);
+  const D = p.diameter;
+  const w = p.width;
+  const bore = p.bore;
+  const N = Math.max(8, Math.round(p.rollers ?? 12));
+  const rollerR = D * 0.085;
+  const ringR = D / 2 - rollerR * 1.0;
+  const helixAngle = Math.PI / 4; // 45°
+
+  // Hub + side plates same as omni
+  const hub = new THREE.CylinderGeometry(ringR * 0.55, ringR * 0.55, w * 0.95, 32);
+  const sideR = D / 2 * 0.95;
+  const sideRing = new THREE.CylinderGeometry(sideR, sideR, w * 0.08, 48);
+  const sideCutDisc = new THREE.CylinderGeometry(ringR * 0.78, ringR * 0.78, w * 0.2, 48);
+  const sidePlate = csg(sideRing, new THREE.Matrix4(), sideCutDisc, new THREE.Matrix4(), 'subtract');
+  const sideA = transformed(sidePlate, new THREE.Matrix4().makeTranslation(0, w * 0.46, 0));
+  const sideB = transformed(sidePlate, new THREE.Matrix4().makeTranslation(0, -w * 0.46, 0));
+
+  const rollers: THREE.BufferGeometry[] = [];
+  for (let i = 0; i < N; i++) {
+    const a = (i / N) * Math.PI * 2;
+    const barrelPts: THREE.Vector2[] = [];
+    const halfRL = ringR * Math.PI / N * 1.05;
+    const segs = 10;
+    for (let k = 0; k <= segs; k++) {
+      const t = k / segs;
+      const y = (t - 0.5) * 2 * halfRL;
+      const rad = rollerR * (1 - 0.55 * (t * 2 - 1) * (t * 2 - 1));
+      barrelPts.push(new THREE.Vector2(Math.max(rad, 0.001), y));
+    }
+    const roller = new THREE.LatheGeometry(barrelPts, 14);
+    // Start with axis Y, rotate to Z (tangent), then tilt by helix angle
+    // about X so the axis picks up a Y (wheel-axis) component — that 45°
+    // tilt is what distinguishes a mecanum roller from an omni roller.
+    roller.rotateX(Math.PI / 2);
+    roller.rotateX(helixAngle);
+    roller.translate(ringR, 0, 0);
+    roller.rotateY(a);
+    rollers.push(roller);
+  }
+  const boreCyl = new THREE.CylinderGeometry(bore / 2, bore / 2, w * 1.5, 24);
+  let body = mergeMany([hub, sideA, sideB]);
+  body = csg(body, new THREE.Matrix4(), boreCyl, new THREE.Matrix4(), 'subtract');
+  const merged = mergeMany([body, ...rollers]);
+  merged.rotateZ(Math.PI / 2);
+  return merged;
 }
 
 /* ---------------- Pneumatic / Plumbing ---------------- */
@@ -1446,25 +1838,28 @@ export const PARTS: PartDef[] = [
   ], build: angleIron },
 
   /* ----- Wheels ----- */
-  { id: 'plain-wheel', name: 'Plain Wheel', category: 'wheels', description: 'Smooth-rim wheel.', params: [
-    { key: 'diameter', label: 'Ø', min: 2, max: 8, step: 0.2, default: 4, unit: 'cm' },
-    { key: 'width', label: 'Width', min: 0.5, max: 3, step: 0.1, default: 1.2, unit: 'cm' },
-    { key: 'bore', label: 'Bore', min: 0.4, max: 2, step: 0.05, default: 0.8, unit: 'cm' },
+  { id: 'plain-wheel', name: 'Spoked Wheel', category: 'wheels', description: 'Cast-aluminum spoked wheel with rubber tire and treaded crown.', params: [
+    { key: 'diameter', label: 'Ø', min: 2, max: 10, step: 0.2, default: 5, unit: 'cm' },
+    { key: 'width', label: 'Width', min: 0.5, max: 3, step: 0.1, default: 1.4, unit: 'cm' },
+    { key: 'bore', label: 'Axle bore', min: 0.4, max: 2, step: 0.05, default: 0.8, unit: 'cm' },
+    { key: 'spokes', label: 'Spokes', min: 3, max: 12, step: 1, default: 6 },
   ], build: plainWheel },
-  { id: 'caster-wheel', name: 'Caster Wheel', category: 'wheels', description: 'Light-duty caster.', params: [
+  { id: 'caster-wheel', name: 'Caster Wheel', category: 'wheels', description: 'Light-duty caster with solid hub and rubber tread.', params: [
     { key: 'diameter', label: 'Ø', min: 2, max: 8, step: 0.2, default: 5, unit: 'cm' },
     { key: 'width', label: 'Width', min: 0.5, max: 3, step: 0.1, default: 1.5, unit: 'cm' },
     { key: 'bore', label: 'Bore', min: 0.4, max: 2, step: 0.05, default: 0.8, unit: 'cm' },
   ], build: casterWheel },
-  { id: 'omni-wheel', name: 'Omni Wheel', category: 'wheels', description: 'Wheel with side rollers.', params: [
+  { id: 'omni-wheel', name: 'Omni Wheel', category: 'wheels', description: 'Hub-and-rollers omni wheel — rollers run tangent to the rim so the wheel can slide sideways.', params: [
     { key: 'diameter', label: 'Ø', min: 3, max: 10, step: 0.2, default: 6, unit: 'cm' },
     { key: 'width', label: 'Width', min: 0.6, max: 3, step: 0.1, default: 1.5, unit: 'cm' },
     { key: 'bore', label: 'Bore', min: 0.4, max: 2, step: 0.05, default: 0.8, unit: 'cm' },
+    { key: 'rollers', label: 'Rollers', min: 8, max: 24, step: 1, default: 12 },
   ], build: omniWheel },
-  { id: 'mecanum-wheel', name: 'Mecanum Wheel', category: 'wheels', description: 'Approximated mecanum wheel.', params: [
+  { id: 'mecanum-wheel', name: 'Mecanum Wheel', category: 'wheels', description: 'Holonomic-drive wheel with rollers offset 45° from the wheel axis (right-hand chirality).', params: [
     { key: 'diameter', label: 'Ø', min: 4, max: 12, step: 0.5, default: 8, unit: 'cm' },
     { key: 'width', label: 'Width', min: 1, max: 4, step: 0.2, default: 2.5, unit: 'cm' },
     { key: 'bore', label: 'Bore', min: 0.5, max: 2, step: 0.05, default: 1, unit: 'cm' },
+    { key: 'rollers', label: 'Rollers', min: 8, max: 24, step: 1, default: 12 },
   ], build: mecanumWheel },
 
   /* ----- Pneumatic / Plumbing ----- */

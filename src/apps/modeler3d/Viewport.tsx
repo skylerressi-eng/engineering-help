@@ -6,7 +6,7 @@ import {
   GizmoHelper,
   GizmoViewport,
 } from '@react-three/drei';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { useModelerStore, type SceneObject } from '@/store/modelerStore';
 import { applyStack } from '@/lib/modeler/modifiers';
@@ -52,13 +52,13 @@ function SceneObjects() {
   const setTransform = useModelerStore((s) => s.setTransform);
   const { camera, gl } = useThree();
   const meshRefs = useRef<Map<string, THREE.Mesh>>(new Map());
-  // refTick bumps every time a child registers/deregisters a mesh ref so we
-  // can re-render and pick up the latest mesh in the TransformControls JSX.
-  const [refTick, setRefTick] = useState(0);
-  const bump = () => setRefTick((t) => t + 1);
-  void refTick;
+  // refTick bumps once when a child registers/deregisters its mesh so we
+  // re-render and pick up the latest mesh in TransformControls. `bump` must
+  // have a stable identity so child effects don't refire on every parent render.
+  const [, setRefTick] = useState(0);
+  const bump = useCallback(() => setRefTick((t) => t + 1), []);
 
-  const selectedMesh = selectedId ? meshRefs.current.get(selectedId) : null;
+  const selectedMesh = selectedId ? meshRefs.current.get(selectedId) ?? null : null;
 
   return (
     <>
@@ -120,17 +120,25 @@ function Obj({
     };
   }, [geom, obj.geometry]);
 
+  // Register/deregister this mesh on mount/unmount only — an inline ref
+  // callback would have a new identity every render, causing React to fire
+  // it (and onRefChange → setState) on every render and flood the scheduler
+  // with "Maximum update depth exceeded".
+  const meshRef = useRef<THREE.Mesh | null>(null);
+  useEffect(() => {
+    const m = meshRef.current;
+    if (!m) return;
+    meshRefs.current.set(obj.id, m);
+    onRefChange();
+    return () => {
+      meshRefs.current.delete(obj.id);
+      onRefChange();
+    };
+  }, [obj.id, meshRefs, onRefChange]);
+
   return (
     <mesh
-      ref={(m) => {
-        if (m) {
-          meshRefs.current.set(obj.id, m);
-          onRefChange();
-        } else if (meshRefs.current.has(obj.id)) {
-          meshRefs.current.delete(obj.id);
-          onRefChange();
-        }
-      }}
+      ref={meshRef}
       geometry={geom}
       position={obj.position}
       rotation={obj.rotation}

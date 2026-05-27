@@ -18,6 +18,8 @@ import { sendMessage, abortActive } from './conversation';
 import { useRegisteredTools } from '@/hooks/useToolRegistry';
 import MessageContent from './MessageContent';
 import { getApp } from '@/apps/registry';
+import { useSettingsStore } from '@/store/settingsStore';
+import { useWindowStore } from '@/store/windowStore';
 
 const MENU_BAR = 28;
 
@@ -213,6 +215,7 @@ export default function AiChat() {
           )}
 
           {/* Input */}
+          <ApiKeyBanner />
           <ChatInput pending={pending} />
         </motion.div>
       )}
@@ -447,6 +450,26 @@ function ToolCallBlock({
           {block.error}
         </div>
       )}
+    </div>
+  );
+}
+
+function ApiKeyBanner() {
+  const key = useSettingsStore((s) => s.aiApiKey);
+  const openApp = useWindowStore((s) => s.openApp);
+  if (key.trim()) return null;
+  return (
+    <div className="border-t border-amber-400/25 bg-amber-400/10 px-3 py-2 text-[12px] text-amber-100 flex items-center gap-2">
+      <Sparkles size={13} className="text-amber-300 shrink-0" />
+      <span className="flex-1">
+        Add your Anthropic API key to start chatting.
+      </span>
+      <button
+        onClick={() => openApp('settings', { title: 'Settings' })}
+        className="px-2 py-0.5 rounded-md bg-amber-300/20 hover:bg-amber-300/30 text-amber-100 text-[11px] font-medium"
+      >
+        Open Settings
+      </button>
     </div>
   );
 }

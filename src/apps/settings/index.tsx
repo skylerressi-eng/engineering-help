@@ -224,12 +224,40 @@ function AppearancePane() {
 function AIPane() {
   const aiModel = useSettingsStore((s) => s.aiModel);
   const setAiModel = useSettingsStore((s) => s.setAiModel);
+  const aiApiKey = useSettingsStore((s) => s.aiApiKey);
+  const setAiApiKey = useSettingsStore((s) => s.setAiApiKey);
   const historyEnabled = useAiStore((s) => s.historyEnabled);
   const setHistoryEnabled = useAiStore((s) => s.setHistoryEnabled);
   const clearHistory = useAiStore((s) => s.clearHistory);
+  const [showKey, setShowKey] = useState(false);
   return (
     <div className="space-y-6 max-w-md">
       <PaneTitle>AI</PaneTitle>
+      <div>
+        <Label>Anthropic API key</Label>
+        <div className="flex items-center gap-2 mt-1.5">
+          <input
+            type={showKey ? 'text' : 'password'}
+            value={aiApiKey}
+            onChange={(e) => setAiApiKey(e.target.value)}
+            placeholder="sk-ant-…"
+            spellCheck={false}
+            autoComplete="off"
+            className="flex-1 bg-white/5 border border-white/10 rounded-md px-2 py-1 text-sm outline-none font-mono"
+          />
+          <button
+            onClick={() => setShowKey((v) => !v)}
+            className="px-2 py-1 rounded-md text-xs bg-white/10 hover:bg-white/15"
+          >
+            {showKey ? 'Hide' : 'Show'}
+          </button>
+        </div>
+        <div className="text-[11px] text-white/45 mt-1">
+          Your key stays in this browser's localStorage and is sent only to{' '}
+          <span className="font-mono">api.anthropic.com</span>. Get one at{' '}
+          <span className="font-mono">console.anthropic.com</span>.
+        </div>
+      </div>
       <Row label="Model">
         <select
           value={aiModel}

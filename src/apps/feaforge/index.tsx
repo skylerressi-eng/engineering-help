@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { Canvas } from '@react-three/fiber';
 import {
@@ -19,6 +19,7 @@ import {
   ArrowDown,
   BookOpen,
   ChevronDown,
+  Upload,
 } from 'lucide-react';
 import type { AppModule } from '@/os/types';
 import { useFeaStore, type FeaTool } from '@/store/feaStore';
@@ -582,6 +583,7 @@ function FEAForge({ appId }: { appId: string }) {
               </div>
             )}
           </div>
+          <ImportTrussButton />
           <button
             onClick={clear}
             className="ml-auto flex items-center gap-1 px-2 h-6 rounded-md text-xs hover:bg-white/10 shrink-0"
@@ -719,6 +721,46 @@ function FEAForge({ appId }: { appId: string }) {
         )}
       </div>
     </div>
+  );
+}
+
+function ImportTrussButton() {
+  const ref = useRef<HTMLInputElement>(null);
+  const loadFromGeometry = useFeaStore((s) => s.loadFromGeometry);
+  const onFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    try {
+      const { loadMeshFile } = await import('@/lib/modeler/importMesh');
+      const geom = await loadMeshFile(f);
+      const r = loadFromGeometry(geom, f.name.replace(/\.[^.]+$/, ''));
+      toast.success(
+        'Imported',
+        `${r.nodes} nodes, ${r.elements} bars from ${f.name}.`,
+      );
+    } catch (err) {
+      toast.error('Import failed', (err as Error).message);
+    } finally {
+      e.target.value = '';
+    }
+  };
+  return (
+    <>
+      <button
+        onClick={() => ref.current?.click()}
+        className="flex items-center gap-1 px-2 h-6 rounded-md text-xs hover:bg-white/10 shrink-0"
+        title="Import a CAD mesh (OBJ/STL/PLY/GLTF/GLB/3MF/DAE/FBX) — vertices become nodes, edges become bars. Ground-plane nodes are auto-pinned."
+      >
+        <Upload size={12} /> Import
+      </button>
+      <input
+        ref={ref}
+        type="file"
+        accept=".obj,.stl,.ply,.gltf,.glb,.3mf,.dae,.fbx"
+        hidden
+        onChange={onFile}
+      />
+    </>
   );
 }
 

@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import type * as THREE from 'three';
 import {
   solveTruss3D,
   type FeaModel3D,
@@ -47,6 +48,10 @@ interface FeaStore {
   setPDir: (d: [number, number, number]) => void;
   setDeltaT: (t: number) => void;
   loadPreset: (id: string) => void;
+  loadFromGeometry: (geom: THREE.BufferGeometry, name?: string) => {
+    nodes: number;
+    elements: number;
+  };
   clear: () => void;
   solve: () => FeaResult3D;
 }
@@ -252,6 +257,150 @@ export const useFeaStore = create<FeaStore>((set, get) => ({
         elementFrom: null,
         rev: s.rev + 1,
       }));
+  },
+
+  loadFromGeometry: (geom) => {
+    const pos = geom.getAttribute('position');
+    if (!pos) throw new Error('geometry has no position attribute');
+    // Snap-merge vertices that are within 1e-4 of each other; rebuild edges
+    // from the triangle list.
+    const verts: { x: number; y: number; z: number }[] = [];
+    const indexMap: number[] = []; // for each triangle vertex i → merged index
+    const TOL = 1e-4;
+    const round = (v: number) => Math.round(v / TOL);
+    const key = (x: number, y: number, z: number) =>
+      `${round(x)},${round(y)},${round(z)}`;
+    const keyToIdx = new Map<string, number>();
+    for (let i = 0; i < pos.count; i++) {
+      const x = pos.getX(i);
+      const y = pos.getY(i);
+      const z = pos.getZ(i);
+      if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) {
+        indexMap.push(-1);
+        continue;
+      }
+      const k = key(x, y, z);
+      let idx = keyToIdx.get(k);
+      if (idx === undefined) {
+        idx = verts.length;
+        keyToIdx.set(k, idx);
+        verts.push({ x, y, z });
+      }
+      indexMap.push(idx);
+    }
+    if (verts.length < 2) throw new Error('not enough vertices');
+    // Edges (unique pairs from triangle list).
+    const edgeSet = new Set<string>();
+    const edges: [number, number][] = [];
+    const pushEdge = (a: number, b: number) => {
+      if (a === b || a < 0 || b < 0) return;
+      const lo = Math.min(a, b);
+      const hi = Math.max(a, b);
+      const k = `${lo}-${hi}`;
+      if (edgeSet.has(k)) return;
+      edgeSet.add(k);
+      edges.push([lo, hi]);
+    };
+    const indexAttr = geom.index;
+    if (indexAttr) {
+      for (let i = 0; i + 2 < indexAttr.count; i += 3) {
+        const ai = indexMap[indexAttr.getX(i)];
+        const bi = indexMap[indexAttr.getX(i + 1)];
+        const ci = indexMap[indexAttr.getX(i + 2)];
+        pushEdge(ai, bi);
+        pushEdge(bi, ci);
+        pushEdge(ci, ai);
+      }
+    } else {
+      for (let i = 0; i + 2 < indexMap.length; i += 3) {
+        pushEdge(indexMap[i], indexMap[i + 1]);
+        pushEdge(indexMap[i + 1], indexMap[i + 2]);
+        pushEdge(indexMap[i + 2], indexMap[i]);
+      }
+    }
+    if (edges.length === 0) throw new Error('no edges extracted from mesh');
+
+    // Recenter (x,z) and lift onto ground (min Y = 0). Scale longest dimension to ~5 m.
+    let minX = Infinity, maxX = -Infinity;
+    let minY = Infinity, maxY = -Infinity;
+    let minZ = Infinity, maxZ = -Infinity;
+    for (const v of verts) {
+      if (v.x < minX) minX = v.x;
+      if (v.x > maxX) maxX = v.x;
+      if (v.y < minY) minY = v.y;
+      if (v.y > maxY) maxY = v.y;
+      if (v.z < minZ) minZ = v.z;
+      if (v.z > maxZ) maxZ = v.z;
+    }
+    const dx = maxX - minX;
+    const dy = maxY - minY;
+    const dz = maxZ - minZ;
+    const longest = Math.max(dx, dy, dz) || 1;
+    const s = 5 / longest;
+    const cx = (minX + maxX) / 2;
+    const cz = (minZ + maxZ) / 2;
+    for (const v of verts) {
+      v.x = (v.x - cx) * s;
+      v.y = (v.y - minY) * s;
+      v.z = (v.z - cz) * s;
+    }
+
+    // Hard cap to keep the solver responsive.
+    const MAX_NODES = 200;
+    const MAX_ELEMENTS = 800;
+    if (verts.length > MAX_NODES || edges.length > MAX_ELEMENTS) {
+      // Decimate by greedy edge-shortest-first dropping until under cap.
+      // Simple approach: just take the first MAX_NODES/MAX_ELEMENTS and drop edges
+      // referencing dropped vertices.
+      verts.length = Math.min(verts.length, MAX_NODES);
+      const valid = new Set<number>();
+      for (let i = 0; i < verts.length; i++) valid.add(i);
+      let kept = 0;
+      for (let i = 0; i < edges.length && kept < MAX_ELEMENTS; i++) {
+        const [a, b] = edges[i];
+        if (valid.has(a) && valid.has(b)) {
+          edges[kept++] = edges[i];
+        }
+      }
+      edges.length = kept;
+    }
+
+    const { E, area } = get();
+    const mat = getEngMaterial(get().materialId);
+    const nodes = verts.map((v, i) => ({
+      id: `n${i + 1}`,
+      x: v.x,
+      y: v.y,
+      z: v.z,
+      // Auto-pin nodes sitting on the ground plane so the structure isn't a
+      // free-floating mechanism.
+      fixX: v.y < 1e-3,
+      fixY: v.y < 1e-3,
+      fixZ: v.y < 1e-3,
+    }));
+    const elements = edges.map(([a, b], i) => ({
+      id: `e${i + 1}`,
+      a: nodes[a].id,
+      b: nodes[b].id,
+      E,
+      A: area,
+      alpha: mat.alpha,
+    }));
+    // Make sure seq counters won't collide with this naming on later edits.
+    seq = Math.max(seq, nodes.length + 1, elements.length + 1);
+    set((s) => ({
+      model: {
+        ...s.model,
+        nodes,
+        elements,
+        loads: [],
+      },
+      result: null,
+      selectedNode: null,
+      elementFrom: null,
+      rev: s.rev + 1,
+    }));
+    return { nodes: nodes.length, elements: elements.length };
   },
 
   clear: () =>
